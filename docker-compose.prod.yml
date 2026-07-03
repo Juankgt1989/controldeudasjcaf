@@ -43,7 +43,7 @@ services:
       - traefik.http.routers.debtcontrol.rule=Host(`pagos.grupotelsys.com`)
       - traefik.http.routers.debtcontrol.tls=true
       - traefik.http.routers.debtcontrol.entrypoints=web,websecure
-      - traefik.http.routers.debtcontrol.tls.certresolver=mytlschallenge
+      - traefik.http.routers.debtcontrol.tls.certresolver=zerossl
       - traefik.http.services.debtcontrol.loadbalancer.server.port=3000
 
 networks:
