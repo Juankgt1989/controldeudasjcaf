@@ -7,6 +7,7 @@ import {
   formatFrequency,
   getDueDates,
   getInstallmentAmount,
+  getNextDueDate,
 } from "@/lib/utils";
 import { PaymentFrequency } from "@prisma/client";
 import { PaymentModal } from "./PaymentModal";
@@ -169,6 +170,15 @@ export function DebtManager() {
   const getInstallment = (debt: Debt) => {
     return getInstallmentAmount(
       debt.totalAmount,
+      debt.startDate,
+      debt.endDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined
+    );
+  };
+
+  const getNextDue = (debt: Debt) => {
+    return getNextDueDate(
       debt.startDate,
       debt.endDate,
       debt.paymentFrequency,
@@ -347,6 +357,9 @@ export function DebtManager() {
                 Cuota
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                Próximo pago
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                 Periodo
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
@@ -376,6 +389,21 @@ export function DebtManager() {
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     {formatFrequency(debt.paymentFrequency)}
                   </p>
+                </td>
+                <td className="px-6 py-4">
+                  {debt.status === "PAID" ? (
+                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                      Completado
+                    </p>
+                  ) : getNextDue(debt) ? (
+                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {formatDate(getNextDue(debt)!)}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                      Sin fechas
+                    </p>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <p className="text-sm text-zinc-900 dark:text-zinc-100">
@@ -429,7 +457,7 @@ export function DebtManager() {
             {debts.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400"
                 >
                   No hay deudas registradas
