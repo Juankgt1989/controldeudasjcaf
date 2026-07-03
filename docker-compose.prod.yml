@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: debtcontrol
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:3000"
+    expose:
+      - "3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/debtcontrol?schema=public
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    command: >
+      sh -c "npx prisma migrate deploy && npx prisma db seed && node server.js"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+      - traefik_net
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.debtcontrol.rule=Host(`pagos.grupotelsys.com`)
+      - traefik.http.routers.debtcontrol.tls=true
+      - traefik.http.routers.debtcontrol.entrypoints=web,websecure
+      - traefik.http.routers.debtcontrol.tls.certresolver=mytlschallenge
+      - traefik.http.services.debtcontrol.loadbalancer.server.port=3000
+
+networks:
+  traefik_net:
+    external: true
+    name: n8n-compose_default
+
+volumes:
+  postgres_data:

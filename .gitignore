@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env
+.env.prod
+.env.temp
+*.zip
+*.tar.gz
+query.sql
