@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentFrequency } from "@prisma/client";
+import { calculateEndDate } from "@/lib/utils";
 
 export async function PUT(
   req: NextRequest,
@@ -25,6 +26,7 @@ export async function PUT(
       paymentFrequency,
       dueDay,
       status,
+      numberOfInstallments,
     } = body;
 
     if (
@@ -37,13 +39,34 @@ export async function PUT(
       );
     }
 
+    const installments =
+      numberOfInstallments !== undefined
+        ? numberOfInstallments
+          ? parseInt(numberOfInstallments, 10)
+          : null
+        : undefined;
+
+    let calculatedEndDate: Date | undefined;
+    if (installments && installments > 0) {
+      const freq = paymentFrequency || undefined;
+      if (freq) {
+        calculatedEndDate = calculateEndDate(
+          startDate || new Date().toISOString(),
+          freq,
+          installments
+        );
+      }
+    } else if (endDate !== undefined) {
+      calculatedEndDate = endDate ? new Date(endDate) : undefined;
+    }
+
     const debt = await prisma.debt.update({
       where: { id },
       data: {
         name: name || undefined,
         totalAmount: totalAmount ? parseFloat(totalAmount) : undefined,
         startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
+        endDate: calculatedEndDate,
         paymentFrequency: paymentFrequency || undefined,
         dueDay:
           dueDay !== undefined
@@ -52,6 +75,7 @@ export async function PUT(
               : null
             : undefined,
         status: status || undefined,
+        numberOfInstallments: installments,
       },
     });
 

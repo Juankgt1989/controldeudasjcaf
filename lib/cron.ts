@@ -1,68 +1,202 @@
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
-import { sendTelegramMessage } from "@/lib/telegram";
-import { daysOverdue, formatCurrency, formatFrequency } from "@/lib/utils";
+import { sendTelegramMessage, sendTelegramMessageWithConfirm, startTelegramPolling } from "@/lib/telegram";
+import { getDueDates, formatCurrency, formatFrequency, formatDate } from "@/lib/utils";
+import { PaymentFrequency } from "@prisma/client";
 
 const globalForCron = global as unknown as { cronStarted?: boolean };
+
+const HOURS_BETWEEN_OVERDUE = 5;
+
+function daysBetween(from: Date, to: Date): number {
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function hoursBetween(from: Date, to: Date): number {
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (1000 * 60 * 60));
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
+}
 
 export function startReminderCron() {
   if (globalForCron.cronStarted) {
     return;
   }
-
   globalForCron.cronStarted = true;
 
-  cron.schedule("0 8 * * *", async () => {
-    console.log("Running reminder cron job");
+  startTelegramPolling();
 
-    const user = await prisma.user.findFirst({
-      select: { telegramChatId: true },
-    });
+  cron.schedule("0 * * * *", async () => {
+    console.log("Running reminder cron job:", new Date().toISOString());
 
-    if (!user?.telegramChatId) {
-      console.log("No Telegram chat ID configured");
-      return;
-    }
+    try {
+      const user = await prisma.user.findFirst({
+        select: { telegramChatId: true },
+      });
 
-    const debts = await prisma.debt.findMany({
-      where: { status: { not: "PAID" } },
-      include: {
-        payments: { select: { amount: true } },
-      },
-    });
+      if (!user?.telegramChatId) {
+        console.log("No Telegram chat ID configured");
+        return;
+      }
 
-    for (const debt of debts) {
-      const days = daysOverdue(
-        debt.startDate,
-        debt.endDate,
-        debt.paymentFrequency,
-        debt.dueDay ?? undefined
-      );
+      const chatId = user.telegramChatId;
+      const now = new Date();
 
-      if (days >= 5) {
-        const paid = debt.payments.reduce(
-          (sum, p) => sum + Number(p.amount),
-          0
-        );
+      const debts = await prisma.debt.findMany({
+        where: { status: { not: "PAID" } },
+        include: {
+          payments: { select: { amount: true } },
+          installmentNotifications: true,
+        },
+      });
+
+      for (const debt of debts) {
+        const paid = debt.payments.reduce((sum, p) => sum + Number(p.amount), 0);
         const balance = Number(debt.totalAmount) - paid;
 
-        if (balance > 0) {
-          const message = [
-            "⏰ *Recordatorio de deuda vencida*",
-            "",
+        if (balance <= 0) continue;
+
+        const dueDates = getDueDates(
+          debt.startDate,
+          debt.endDate,
+          debt.paymentFrequency as PaymentFrequency,
+          debt.dueDay ?? undefined
+        );
+
+        if (dueDates.length === 0) continue;
+
+        const upcomingDates = dueDates.filter((d) => d >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+        const targetDates = upcomingDates.length > 0 ? upcomingDates : [dueDates[dueDates.length - 1]];
+
+        for (const dueDate of targetDates) {
+          const daysUntilDue = daysBetween(now, dueDate);
+          const isOverdue = daysUntilDue < 0;
+          const isDueToday = daysUntilDue === 0;
+
+          let notification = debt.installmentNotifications.find(
+            (n) => n.dueDate.toISOString().split("T")[0] === dueDate.toISOString().split("T")[0]
+          );
+
+          if (!notification) {
+            notification = await prisma.installmentNotification.create({
+              data: {
+                debtId: debt.id,
+                dueDate: dueDate,
+              },
+            });
+          }
+
+          if (notification.confirmed) continue;
+
+          const baseMessage = [
             `*Deuda:* ${debt.name}`,
-            `*Total:* ${formatCurrency(Number(debt.totalAmount))}`,
+            `*Cuota:* ${formatDate(dueDate)}`,
             `*Saldo pendiente:* ${formatCurrency(balance)}`,
-            `*Días de retraso:* ${days}`,
             `*Frecuencia:* ${formatFrequency(debt.paymentFrequency)}`,
-            `*Periodo:* ${debt.startDate.toLocaleDateString("es-GT")} - ${debt.endDate.toLocaleDateString("es-GT")}`,
           ].join("\n");
 
-          await sendTelegramMessage(user.telegramChatId, message);
+          if (isOverdue) {
+            const hoursSinceLast = notification.lastOverdueSent
+              ? hoursBetween(notification.lastOverdueSent, now)
+              : Infinity;
+
+            if (hoursSinceLast >= HOURS_BETWEEN_OVERDUE) {
+              const overdueDays = Math.abs(daysUntilDue);
+              const message = [
+                "🚨 *Pago vencido*",
+                "",
+                baseMessage,
+                `*Días de retraso:* ${overdueDays}`,
+                "",
+                "_Confirma que leíste este mensaje_",
+              ].join("\n");
+
+              await sendTelegramMessageWithConfirm(chatId, message, notification.id);
+              await prisma.installmentNotification.update({
+                where: { id: notification.id },
+                data: { lastOverdueSent: now },
+              });
+            }
+          } else if (isDueToday) {
+            if (!notification.dueDateSent) {
+              const message = [
+                "📅 *Vence hoy*",
+                "",
+                baseMessage,
+                "",
+                "_Confirma que leíste este mensaje_",
+              ].join("\n");
+
+              await sendTelegramMessageWithConfirm(chatId, message, notification.id);
+              await prisma.installmentNotification.update({
+                where: { id: notification.id },
+                data: { dueDateSent: true },
+              });
+            } else {
+              const hoursSinceLast = notification.lastOverdueSent
+                ? hoursBetween(notification.lastOverdueSent, now)
+                : Infinity;
+
+              if (hoursSinceLast >= HOURS_BETWEEN_OVERDUE) {
+                const message = [
+                  "⏰ *Recordatorio - Vence hoy*",
+                  "",
+                  baseMessage,
+                  "",
+                  "_Confirma que leíste este mensaje_",
+                ].join("\n");
+
+                await sendTelegramMessageWithConfirm(chatId, message, notification.id);
+                await prisma.installmentNotification.update({
+                  where: { id: notification.id },
+                  data: { lastOverdueSent: now },
+                });
+              }
+            }
+          } else if (daysUntilDue === 5) {
+            if (!notification.fiveDaySent) {
+              const message = [
+                "📋 *Recordatorio anticipado*",
+                "",
+                baseMessage,
+                `*Días restantes:* 5`,
+              ].join("\n");
+
+              await sendTelegramMessage(chatId, message);
+              await prisma.installmentNotification.update({
+                where: { id: notification.id },
+                data: { fiveDaySent: true },
+              });
+            }
+          } else if (daysUntilDue >= 1 && daysUntilDue <= 4) {
+            const alreadySentToday =
+              notification.dailyLastSent && isSameDay(notification.dailyLastSent, now);
+
+            if (!alreadySentToday) {
+              const message = [
+                "⏰ *Recordatorio de pago*",
+                "",
+                baseMessage,
+                `*Días restantes:* ${daysUntilDue}`,
+              ].join("\n");
+
+              await sendTelegramMessage(chatId, message);
+              await prisma.installmentNotification.update({
+                where: { id: notification.id },
+                data: { dailyLastSent: now },
+              });
+            }
+          }
         }
       }
+    } catch (error) {
+      console.error("Cron job error:", error);
     }
   });
 
-  console.log("Reminder cron job started");
+  console.log("Reminder cron job started (hourly)");
 }

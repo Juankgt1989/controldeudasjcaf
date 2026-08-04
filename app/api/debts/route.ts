@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentFrequency } from "@prisma/client";
+import { calculateEndDate } from "@/lib/utils";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -30,10 +31,17 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, totalAmount, startDate, endDate, paymentFrequency, dueDay } =
-      body;
+    const {
+      name,
+      totalAmount,
+      startDate,
+      endDate,
+      paymentFrequency,
+      dueDay,
+      numberOfInstallments,
+    } = body;
 
-    if (!name || !totalAmount || !startDate || !endDate || !paymentFrequency) {
+    if (!name || !totalAmount || !startDate || !paymentFrequency) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -47,14 +55,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const installments = numberOfInstallments
+      ? parseInt(numberOfInstallments, 10)
+      : null;
+
+    const calculatedEndDate =
+      installments && installments > 0
+        ? calculateEndDate(startDate, paymentFrequency, installments)
+        : endDate
+          ? new Date(endDate)
+          : null;
+
+    if (!calculatedEndDate) {
+      return NextResponse.json(
+        { error: "endDate or numberOfInstallments is required" },
+        { status: 400 }
+      );
+    }
+
     const debt = await prisma.debt.create({
       data: {
         name,
         totalAmount: parseFloat(totalAmount),
         startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        endDate: calculatedEndDate,
         paymentFrequency,
         dueDay: dueDay ? parseInt(dueDay, 10) : null,
+        numberOfInstallments: installments,
       },
     });
 

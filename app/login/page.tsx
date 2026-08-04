@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -46,9 +47,14 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-12 dark:bg-zinc-950">
       <div className="w-full max-w-md space-y-8 rounded-xl border border-zinc-200 bg-white p-8 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex flex-col items-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">
-            CD
-          </span>
+          <Image
+            src="/logo.png"
+            alt="Control de Deudas"
+            width={56}
+            height={56}
+            className="mb-3 rounded-xl"
+            priority
+          />
           <h1 className="text-center text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
             Control de Deudas
           </h1>

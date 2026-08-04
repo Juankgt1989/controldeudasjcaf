@@ -8,6 +8,7 @@ import {
   getDueDates,
   getInstallmentAmount,
   getNextDueDate,
+  calculateEndDate,
 } from "@/lib/utils";
 import { PaymentFrequency } from "@prisma/client";
 import { PaymentModal } from "./PaymentModal";
@@ -24,6 +25,7 @@ interface Debt {
   endDate: string;
   paymentFrequency: PaymentFrequency;
   dueDay: number | null;
+  numberOfInstallments: number | null;
   status: string;
   payments: Payment[];
 }
@@ -53,6 +55,7 @@ export function DebtManager() {
     endDate: "",
     paymentFrequency: "MONTHLY",
     dueDay: "",
+    numberOfInstallments: "",
   });
   const [previewDates, setPreviewDates] = useState<Date[]>([]);
 
@@ -69,10 +72,24 @@ export function DebtManager() {
   }, []);
 
   const updatePreview = (draft: typeof form) => {
-    if (draft.startDate && draft.endDate) {
+    let effectiveEndDate = draft.endDate;
+
+    if (draft.numberOfInstallments && draft.startDate && draft.paymentFrequency) {
+      const n = parseInt(draft.numberOfInstallments, 10);
+      if (n > 0) {
+        const calculated = calculateEndDate(
+          draft.startDate,
+          draft.paymentFrequency as PaymentFrequency,
+          n
+        );
+        effectiveEndDate = calculated.toISOString().split("T")[0];
+      }
+    }
+
+    if (draft.startDate && effectiveEndDate) {
       const dates = getDueDates(
         draft.startDate,
-        draft.endDate,
+        effectiveEndDate,
         draft.paymentFrequency as PaymentFrequency,
         draft.dueDay ? parseInt(draft.dueDay, 10) : undefined
       );
@@ -82,8 +99,42 @@ export function DebtManager() {
     }
   };
 
+  const getEffectiveEndDate = () => {
+    if (form.numberOfInstallments && form.startDate && form.paymentFrequency) {
+      const n = parseInt(form.numberOfInstallments, 10);
+      if (n > 0) {
+        return calculateEndDate(
+          form.startDate,
+          form.paymentFrequency as PaymentFrequency,
+          n
+        )
+          .toISOString()
+          .split("T")[0];
+      }
+    }
+    return form.endDate;
+  };
+
   const setFormValue = (key: keyof typeof form, value: string) => {
     const draft = { ...form, [key]: value };
+
+    if (
+      (key === "numberOfInstallments" || key === "startDate" || key === "paymentFrequency") &&
+      draft.numberOfInstallments &&
+      draft.startDate &&
+      draft.paymentFrequency
+    ) {
+      const n = parseInt(draft.numberOfInstallments, 10);
+      if (n > 0) {
+        const calculated = calculateEndDate(
+          draft.startDate,
+          draft.paymentFrequency as PaymentFrequency,
+          n
+        );
+        draft.endDate = calculated.toISOString().split("T")[0];
+      }
+    }
+
     setForm(draft);
     updatePreview(draft);
   };
@@ -96,6 +147,7 @@ export function DebtManager() {
       endDate: "",
       paymentFrequency: "MONTHLY",
       dueDay: "",
+      numberOfInstallments: "",
     });
     setPreviewDates([]);
     setEditing(null);
@@ -104,27 +156,28 @@ export function DebtManager() {
 
   const startEdit = (debt: Debt) => {
     setEditing(debt);
-    setForm({
+    const draft = {
       name: debt.name,
       totalAmount: debt.totalAmount,
       startDate: debt.startDate.split("T")[0],
       endDate: debt.endDate.split("T")[0],
       paymentFrequency: debt.paymentFrequency,
       dueDay: debt.dueDay?.toString() || "",
-    });
+      numberOfInstallments: debt.numberOfInstallments?.toString() || "",
+    };
+    setForm(draft);
     setShowForm(true);
-    updatePreview({
-      name: debt.name,
-      totalAmount: debt.totalAmount,
-      startDate: debt.startDate.split("T")[0],
-      endDate: debt.endDate.split("T")[0],
-      paymentFrequency: debt.paymentFrequency,
-      dueDay: debt.dueDay?.toString() || "",
-    });
+    updatePreview(draft);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const effectiveEndDate = getEffectiveEndDate();
+    const payload = {
+      ...form,
+      endDate: effectiveEndDate,
+    };
 
     const url = editing ? `/api/debts/${editing.id}` : "/api/debts";
     const method = editing ? "PUT" : "POST";
@@ -132,7 +185,7 @@ export function DebtManager() {
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
@@ -251,13 +304,25 @@ export function DebtManager() {
               />
             </div>
             <div>
+              <label className={labelClass}>Número de plazos</label>
+              <input
+                type="number"
+                min="1"
+                value={form.numberOfInstallments}
+                onChange={(e) => setFormValue("numberOfInstallments", e.target.value)}
+                placeholder="Ej. 6"
+                className={inputClass}
+              />
+            </div>
+            <div>
               <label className={labelClass}>Fecha final</label>
               <input
                 type="date"
                 required
-                value={form.endDate}
+                value={getEffectiveEndDate()}
                 onChange={(e) => setFormValue("endDate", e.target.value)}
-                className={inputClass}
+                readOnly={!!form.numberOfInstallments}
+                className={`${inputClass} ${form.numberOfInstallments ? "cursor-not-allowed opacity-60" : ""}`}
               />
             </div>
             <div>
@@ -304,7 +369,7 @@ export function DebtManager() {
                       getInstallmentAmount(
                         form.totalAmount || 0,
                         form.startDate,
-                        form.endDate,
+                        getEffectiveEndDate(),
                         form.paymentFrequency as PaymentFrequency,
                         form.dueDay ? parseInt(form.dueDay, 10) : undefined
                       )

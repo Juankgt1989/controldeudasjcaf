@@ -29,6 +29,24 @@ export function formatFrequency(frequency: PaymentFrequency) {
   }
 }
 
+export function calculateEndDate(
+  startDate: Date | string,
+  frequency: PaymentFrequency,
+  numberOfInstallments: number
+): Date {
+  const start = new Date(startDate);
+  const end = new Date(start);
+
+  if (frequency === "MONTHLY") {
+    end.setMonth(end.getMonth() + (numberOfInstallments - 1));
+  } else {
+    const days = frequency === "WEEKLY" ? 7 : 15;
+    end.setDate(end.getDate() + (numberOfInstallments - 1) * days);
+  }
+
+  return end;
+}
+
 export function getDueDates(
   startDate: Date | string,
   endDate: Date | string,

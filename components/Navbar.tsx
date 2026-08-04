@@ -2,6 +2,7 @@
 
 import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTheme } from "@/components/ThemeProvider";
@@ -27,9 +28,14 @@ export function Navbar({
         <div className="flex h-16 justify-between">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
-                CD
-              </span>
+              <Image
+                src="/logo.png"
+                alt="Control de Deudas"
+                width={32}
+                height={32}
+                className="rounded-lg"
+                priority
+              />
               <span className="hidden text-base font-bold text-zinc-900 sm:inline dark:text-zinc-100">
                 Control de Deudas
               </span>
