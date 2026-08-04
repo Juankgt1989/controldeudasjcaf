@@ -22,6 +22,16 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.toDateString() === b.toDateString();
 }
 
+function getGuatemalaHour(now: Date): number {
+  return Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Guatemala",
+      hourCycle: "h23",
+      hour: "numeric",
+    }).format(now)
+  );
+}
+
 export function startReminderCron() {
   if (globalForCron.cronStarted) {
     return;
@@ -33,8 +43,16 @@ export function startReminderCron() {
   cron.schedule("0 * * * *", async () => {
     console.log("Running reminder cron job:", new Date().toISOString());
 
+    const now = new Date();
+    const gtHour = getGuatemalaHour(now);
+    if (gtHour < 9 || gtHour > 20) {
+      console.log(`Outside notification window (9 AM - 8 PM Guatemala time), current hour: ${gtHour}`);
+      return;
+    }
+
     try {
       const user = await prisma.user.findFirst({
+        where: { telegramChatId: { not: null } },
         select: { telegramChatId: true },
       });
 
@@ -44,7 +62,6 @@ export function startReminderCron() {
       }
 
       const chatId = user.telegramChatId;
-      const now = new Date();
 
       const debts = await prisma.debt.findMany({
         where: { status: { not: "PAID" } },
