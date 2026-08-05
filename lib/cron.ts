@@ -8,9 +8,19 @@ const globalForCron = global as unknown as { cronStarted?: boolean };
 
 const HOURS_BETWEEN_OVERDUE = 5;
 
-function daysBetween(from: Date, to: Date): number {
-  const ms = to.getTime() - from.getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
+const gtDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Guatemala",
+});
+
+function guatemalaDateString(date: Date): string {
+  return gtDateFormatter.format(date);
+}
+
+function daysUntilDueDate(dueDate: Date, now: Date): number {
+  const [year, month, day] = guatemalaDateString(now).split("-").map(Number);
+  const todayMs = Date.UTC(year, month - 1, day);
+  const dueMs = Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate());
+  return Math.round((dueMs - todayMs) / (1000 * 60 * 60 * 24));
 }
 
 function hoursBetween(from: Date, to: Date): number {
@@ -19,7 +29,7 @@ function hoursBetween(from: Date, to: Date): number {
 }
 
 function isSameDay(a: Date, b: Date): boolean {
-  return a.toDateString() === b.toDateString();
+  return guatemalaDateString(a) === guatemalaDateString(b);
 }
 
 function getGuatemalaHour(now: Date): number {
@@ -86,11 +96,11 @@ export function startReminderCron() {
 
         if (dueDates.length === 0) continue;
 
-        const upcomingDates = dueDates.filter((d) => d >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+        const upcomingDates = dueDates.filter((d) => daysUntilDueDate(d, now) >= 0);
         const targetDates = upcomingDates.length > 0 ? upcomingDates : [dueDates[dueDates.length - 1]];
 
         for (const dueDate of targetDates) {
-          const daysUntilDue = daysBetween(now, dueDate);
+          const daysUntilDue = daysUntilDueDate(dueDate, now);
           const isOverdue = daysUntilDue < 0;
           const isDueToday = daysUntilDue === 0;
 
