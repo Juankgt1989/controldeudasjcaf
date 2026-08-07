@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentFrequency, DebtStatus } from "@prisma/client";
-import { calculateEndDate } from "@/lib/utils";
+import { calculateEndDate, computeDebtStatus } from "@/lib/utils";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -19,7 +19,26 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(debts);
+  return NextResponse.json(
+    debts.map((debt) => {
+      const paid = debt.payments.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0
+      );
+      return {
+        ...debt,
+        status: computeDebtStatus({
+          status: debt.status,
+          totalAmount: Number(debt.totalAmount),
+          startDate: debt.startDate,
+          endDate: debt.endDate,
+          paymentFrequency: debt.paymentFrequency,
+          dueDay: debt.dueDay,
+          paid,
+        }),
+      };
+    })
+  );
 }
 
 export async function POST(req: NextRequest) {

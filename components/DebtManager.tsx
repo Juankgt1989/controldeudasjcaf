@@ -36,13 +36,6 @@ const frequencyOptions = [
   { value: "MONTHLY", label: "Mensual" },
 ];
 
-const statusOptions = [
-  { value: "ACTIVE", label: "Activa" },
-  { value: "PENDING", label: "Pendiente de pago" },
-  { value: "OVERDUE", label: "Vencida" },
-  { value: "PAID", label: "Pagada" },
-];
-
 const statusStyles: Record<string, string> = {
   PAID: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   OVERDUE: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
@@ -77,7 +70,6 @@ export function DebtManager() {
     paymentFrequency: "MONTHLY",
     dueDay: "",
     numberOfInstallments: "",
-    status: "ACTIVE",
   });
   const [previewDates, setPreviewDates] = useState<Date[]>([]);
 
@@ -170,7 +162,6 @@ export function DebtManager() {
       paymentFrequency: "MONTHLY",
       dueDay: "",
       numberOfInstallments: "",
-      status: "ACTIVE",
     });
     setPreviewDates([]);
     setEditing(null);
@@ -187,7 +178,6 @@ export function DebtManager() {
       paymentFrequency: debt.paymentFrequency,
       dueDay: debt.dueDay?.toString() || "",
       numberOfInstallments: debt.numberOfInstallments?.toString() || "",
-      status: debt.status,
     };
     setForm(draft);
     setShowForm(true);
@@ -380,20 +370,6 @@ export function DebtManager() {
                 onChange={(e) => setFormValue("dueDay", e.target.value)}
                 className={inputClass}
               />
-            </div>
-            <div>
-              <label className={labelClass}>Estado</label>
-              <select
-                value={form.status}
-                onChange={(e) => setFormValue("status", e.target.value)}
-                className={inputClass}
-              >
-                {statusOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 

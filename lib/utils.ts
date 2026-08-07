@@ -164,3 +164,60 @@ export function daysOverdue(
   const diff = today.getTime() - currentDue.getTime();
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
+
+const gtDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Guatemala",
+});
+
+function utcDateKey(date: Date | string): string {
+  const d = new Date(date);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+function guatemalaTodayKey(): string {
+  return gtDateFormatter.format(new Date());
+}
+
+export function computeDebtStatus(args: {
+  status: string;
+  totalAmount: number | string;
+  startDate: Date | string;
+  endDate: Date | string;
+  paymentFrequency: PaymentFrequency;
+  dueDay?: number | null;
+  paid: number;
+}): string {
+  const {
+    status,
+    totalAmount,
+    startDate,
+    endDate,
+    paymentFrequency,
+    dueDay,
+    paid,
+  } = args;
+  const total = Number(totalAmount);
+
+  if (status === "PAID" || paid >= total) return "PAID";
+
+  const todayKey = guatemalaTodayKey();
+  const dates = getDueDates(startDate, endDate, paymentFrequency, dueDay);
+
+  if (dates.length === 0) {
+    return utcDateKey(endDate) < todayKey ? "PENDING" : status;
+  }
+
+  const passedDates = dates.filter((d) => utcDateKey(d) <= todayKey);
+  if (passedDates.length === 0) return status;
+
+  const installment = getInstallmentAmount(
+    totalAmount,
+    startDate,
+    endDate,
+    paymentFrequency,
+    dueDay
+  );
+  const expected = installment * passedDates.length;
+
+  return paid < expected ? "PENDING" : status;
+}
