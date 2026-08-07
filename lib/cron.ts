@@ -157,11 +157,17 @@ export function startReminderCron() {
                 "",
                 baseMessage,
                 `*Días de retraso:* ${overdueDays}`,
-                "",
-                "_Confirma que leíste este mensaje_",
               ].join("\n");
 
-              await sendTelegramMessageWithConfirm(chatId, message, notification.id);
+              if (notification.confirmed) {
+                await sendTelegramMessage(chatId, message);
+              } else {
+                await sendTelegramMessageWithConfirm(
+                  chatId,
+                  `${message}\n\n_Confirma que leíste este mensaje_`,
+                  notification.id
+                );
+              }
               await prisma.installmentNotification.update({
                 where: { id: notification.id },
                 data: { lastOverdueSent: now },
