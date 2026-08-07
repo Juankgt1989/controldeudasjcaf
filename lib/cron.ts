@@ -97,7 +97,26 @@ export function startReminderCron() {
         if (dueDates.length === 0) continue;
 
         const upcomingDates = dueDates.filter((d) => daysUntilDueDate(d, now) >= 0);
-        const targetDates = upcomingDates.length > 0 ? upcomingDates : [dueDates[dueDates.length - 1]];
+
+        const overdueDates = dueDates
+          .filter((d) => daysUntilDueDate(d, now) < 0)
+          .sort((a, b) => b.getTime() - a.getTime());
+
+        let targetDates = [...upcomingDates];
+
+        const latestOverdue = overdueDates[0];
+        if (latestOverdue) {
+          const idx = dueDates.findIndex((d) => d.getTime() === latestOverdue.getTime());
+          const installment = Number(debt.totalAmount) / dueDates.length;
+          const expectedPaid = installment * (idx + 1);
+          if (paid < expectedPaid) {
+            targetDates.unshift(latestOverdue);
+          }
+        }
+
+        if (targetDates.length === 0) {
+          targetDates = [dueDates[dueDates.length - 1]];
+        }
 
         for (const dueDate of targetDates) {
           const daysUntilDue = daysUntilDueDate(dueDate, now);
