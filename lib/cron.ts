@@ -136,7 +136,7 @@ export function startReminderCron() {
             });
           }
 
-          if (notification.confirmed) continue;
+          if (notification.confirmed && !isOverdue) continue;
 
           const baseMessage = [
             `*Deuda:* ${debt.name}`,
