@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PaymentFrequency } from "@prisma/client";
+import { PaymentFrequency, DebtStatus } from "@prisma/client";
 import { calculateEndDate } from "@/lib/utils";
 
 export async function GET() {
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       paymentFrequency,
       dueDay,
       numberOfInstallments,
+      status,
     } = body;
 
     if (!name || !totalAmount || !startDate || !paymentFrequency) {
@@ -51,6 +52,13 @@ export async function POST(req: NextRequest) {
     if (!Object.values(PaymentFrequency).includes(paymentFrequency)) {
       return NextResponse.json(
         { error: "Invalid payment frequency" },
+        { status: 400 }
+      );
+    }
+
+    if (status && !Object.values(DebtStatus).includes(status)) {
+      return NextResponse.json(
+        { error: "Invalid status" },
         { status: 400 }
       );
     }
@@ -82,6 +90,7 @@ export async function POST(req: NextRequest) {
         paymentFrequency,
         dueDay: dueDay ? parseInt(dueDay, 10) : null,
         numberOfInstallments: installments,
+        status: status || undefined,
       },
     });
 

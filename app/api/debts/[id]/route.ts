@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PaymentFrequency } from "@prisma/client";
+import { PaymentFrequency, DebtStatus } from "@prisma/client";
 import { calculateEndDate } from "@/lib/utils";
 
 export async function PUT(
@@ -35,6 +35,13 @@ export async function PUT(
     ) {
       return NextResponse.json(
         { error: "Invalid payment frequency" },
+        { status: 400 }
+      );
+    }
+
+    if (status && !Object.values(DebtStatus).includes(status)) {
+      return NextResponse.json(
+        { error: "Invalid status" },
         { status: 400 }
       );
     }

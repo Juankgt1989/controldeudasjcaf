@@ -9,8 +9,9 @@ datasource db {
 
 enum DebtStatus {
   ACTIVE
-  PAID
+  PENDING
   OVERDUE
+  PAID
 }
 
 enum PaymentFrequency {
