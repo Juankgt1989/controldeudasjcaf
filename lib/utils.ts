@@ -204,11 +204,14 @@ export function computeDebtStatus(args: {
   const dates = getDueDates(startDate, endDate, paymentFrequency, dueDay);
 
   if (dates.length === 0) {
-    return utcDateKey(endDate) < todayKey ? "PENDING" : status;
+    return utcDateKey(endDate) < todayKey ? "PENDING" : "ACTIVE";
   }
 
   const passedDates = dates.filter((d) => utcDateKey(d) <= todayKey);
-  if (passedDates.length === 0) return status;
+
+  if (passedDates.length === 0) {
+    return paid > 0 ? "ON_TIME" : "ACTIVE";
+  }
 
   const installment = getInstallmentAmount(
     totalAmount,
@@ -219,5 +222,7 @@ export function computeDebtStatus(args: {
   );
   const expected = installment * passedDates.length;
 
-  return paid < expected ? "PENDING" : status;
+  if (paid < expected) return "PENDING";
+
+  return paid > 0 ? "ON_TIME" : "ACTIVE";
 }

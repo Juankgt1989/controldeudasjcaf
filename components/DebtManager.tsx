@@ -40,6 +40,7 @@ const statusStyles: Record<string, string> = {
   PAID: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   OVERDUE: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
   PENDING: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400",
+  ON_TIME: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400",
   ACTIVE: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
 };
 
@@ -47,6 +48,7 @@ const statusLabels: Record<string, string> = {
   PAID: "Pagada",
   OVERDUE: "Vencida",
   PENDING: "Pendiente de pago",
+  ON_TIME: "Al día",
   ACTIVE: "Activa",
 };
 
