@@ -165,7 +165,8 @@ export function startReminderCron() {
                 await sendTelegramMessageWithConfirm(
                   chatId,
                   `${message}\n\n_Confirma que leíste este mensaje_`,
-                  notification.id
+                  notification.id,
+                  [{ text: "💰 Registrar pago", callbackData: `pay_${notification.id}` }]
                 );
               }
               await prisma.installmentNotification.update({
