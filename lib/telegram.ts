@@ -81,11 +81,15 @@ export function startTelegramPolling() {
 
         const debt = notification.debt;
 
-        const alreadyRegistered = await prisma.payment.findFirst({
-          where: { debtId: debt.id, notes: { contains: `notif:${notificationId}` } },
+        const recentPayment = await prisma.payment.findFirst({
+          where: {
+            debtId: debt.id,
+            notes: { contains: `notif:${notificationId}` },
+            createdAt: { gte: new Date(Date.now() - 60_000) },
+          },
         });
-        if (alreadyRegistered) {
-          bot.answerCallbackQuery(query.id, { text: "Este pago ya fue registrado ✓" }).catch(() => {});
+        if (recentPayment) {
+          bot.answerCallbackQuery(query.id, { text: "Espera un momento entre pagos" }).catch(() => {});
           return;
         }
 
