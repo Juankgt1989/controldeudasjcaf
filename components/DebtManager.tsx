@@ -8,6 +8,7 @@ import {
   getDueDates,
   getInstallmentAmount,
   getNextDueDate,
+  getPaidInstallments,
   calculateEndDate,
 } from "@/lib/utils";
 import { PaymentFrequency } from "@prisma/client";
@@ -247,11 +248,27 @@ export function DebtManager() {
   };
 
   const getNextDue = (debt: Debt) => {
-    return getNextDueDate(
+    const paid = debt.payments.reduce(
+      (sum, p) => sum + parseFloat(p.amount),
+      0
+    );
+    const dates = getDueDates(
       debt.startDate,
       debt.endDate,
       debt.paymentFrequency,
       debt.dueDay ?? undefined
+    );
+    const paidInstallments = getPaidInstallments(
+      paid,
+      debt.totalAmount,
+      dates.length
+    );
+    return getNextDueDate(
+      debt.startDate,
+      debt.endDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      paidInstallments
     );
   };
 
@@ -544,6 +561,7 @@ export function DebtManager() {
       {paymentDebt && (
         <PaymentModal
           debt={paymentDebt}
+          suggestedAmount={getInstallment(paymentDebt)}
           onClose={() => setPaymentDebt(null)}
           onSaved={fetchDebts}
         />

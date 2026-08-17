@@ -93,6 +93,19 @@ export function getInstallmentAmount(
   return total / dates.length;
 }
 
+export function getPaidInstallments(
+  paid: number,
+  totalAmount: number | string,
+  dueDatesLength: number
+): number {
+  if (dueDatesLength <= 0) return 0;
+  const total =
+    typeof totalAmount === "string" ? parseFloat(totalAmount) : Number(totalAmount);
+  const installment = total / dueDatesLength;
+  if (installment <= 0) return 0;
+  return Math.min(dueDatesLength, Math.floor(paid / installment + 1e-9));
+}
+
 export function getCurrentDueDate(
   startDate: Date | string,
   endDate: Date | string,
@@ -119,18 +132,20 @@ export function getNextDueDate(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  paidInstallments: number = 0
 ): Date | null {
   const today = new Date();
   const dates = getDueDates(startDate, endDate, frequency, dueDay);
+  const remaining = dates.slice(paidInstallments);
 
-  for (const date of dates) {
+  for (const date of remaining) {
     if (date > today) {
       return date;
     }
   }
 
-  return dates[dates.length - 1] ?? null;
+  return remaining[remaining.length - 1] ?? null;
 }
 
 export function isOverdue(

@@ -10,6 +10,7 @@ interface PaymentModalProps {
     totalAmount: string;
     payments: { amount: string }[];
   };
+  suggestedAmount?: number;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -20,17 +21,22 @@ const inputClass =
 const labelClass =
   "block text-sm font-medium text-zinc-900 dark:text-zinc-100";
 
-export function PaymentModal({ debt, onClose, onSaved }: PaymentModalProps) {
-  const [amount, setAmount] = useState("");
+export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: PaymentModalProps) {
+  const balance =
+    parseFloat(debt.totalAmount) -
+    debt.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+
+  const suggested = suggestedAmount ?? 0;
+  const suggestedCapped = Math.min(suggested, Math.max(balance, 0));
+
+  const [amount, setAmount] = useState(
+    suggestedCapped > 0 ? suggestedCapped.toFixed(2) : ""
+  );
   const [paymentDate, setPaymentDate] = useState(
     new Date().toISOString().split("T")[0]
   );
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const balance =
-    parseFloat(debt.totalAmount) -
-    debt.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +85,24 @@ export function PaymentModal({ debt, onClose, onSaved }: PaymentModalProps) {
               onChange={(e) => setAmount(e.target.value)}
               className={inputClass}
             />
+            <div className="mt-2 flex gap-2">
+              {suggestedCapped > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAmount(suggestedCapped.toFixed(2))}
+                  className="rounded-lg bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                >
+                  Cuota: {formatCurrency(suggestedCapped)}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setAmount(balance.toFixed(2))}
+                className="rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              >
+                Saldo total: {formatCurrency(balance)}
+              </button>
+            </div>
           </div>
 
           <div>
