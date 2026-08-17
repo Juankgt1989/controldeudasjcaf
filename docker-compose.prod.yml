@@ -13,14 +13,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - traefik_net
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "8081:3000"
     expose:
       - "3000"
     environment:
@@ -36,14 +36,13 @@ services:
       db:
         condition: service_healthy
     networks:
-      - default
       - traefik_net
     labels:
       - traefik.enable=true
       - traefik.http.routers.debtcontrol.rule=Host(`pagos.grupotelsys.com`)
       - traefik.http.routers.debtcontrol.tls=true
       - traefik.http.routers.debtcontrol.entrypoints=web,websecure
-      - traefik.http.routers.debtcontrol.tls.certresolver=zerossl
+      - traefik.http.routers.debtcontrol.tls.certresolver=mytlschallenge
       - traefik.http.services.debtcontrol.loadbalancer.server.port=3000
 
 networks:
