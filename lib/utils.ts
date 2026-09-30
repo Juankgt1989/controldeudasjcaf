@@ -13,6 +13,7 @@ export function formatDate(date: Date | string) {
     year: "numeric",
     month: "long",
     day: "numeric",
+    timeZone: "UTC",
   }).format(new Date(date));
 }
 
@@ -29,21 +30,43 @@ export function formatFrequency(frequency: PaymentFrequency) {
   }
 }
 
+// Las fechas de vencimiento son fechas de calendario, no instantes. Prisma las
+// devuelve como medianoche UTC (@db.Date), asi que toda la aritmetica se hace en
+// UTC para que el resultado no dependa de la zona horaria del contenedor.
+function calendarDate(year: number, month: number, day: number): Date {
+  return new Date(Date.UTC(year, month, day));
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+function clampToMonth(year: number, month: number, day: number): Date {
+  return calendarDate(year, month, Math.min(day, daysInMonth(year, month)));
+}
+
+function addMonthsClamped(
+  date: Date,
+  months: number,
+  anchorDay: number
+): Date {
+  return clampToMonth(date.getUTCFullYear(), date.getUTCMonth() + months, anchorDay);
+}
+
 export function calculateEndDate(
   startDate: Date | string,
   frequency: PaymentFrequency,
   numberOfInstallments: number
 ): Date {
   const start = new Date(startDate);
-  const end = new Date(start);
 
   if (frequency === "MONTHLY") {
-    end.setMonth(end.getMonth() + (numberOfInstallments - 1));
-  } else {
-    const days = frequency === "WEEKLY" ? 7 : 15;
-    end.setDate(end.getDate() + (numberOfInstallments - 1) * days);
+    return addMonthsClamped(start, numberOfInstallments - 1, start.getUTCDate());
   }
 
+  const days = frequency === "WEEKLY" ? 7 : 15;
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + (numberOfInstallments - 1) * days);
   return end;
 }
 
@@ -58,21 +81,25 @@ export function getDueDates(
   const dates: Date[] = [];
 
   if (frequency === "MONTHLY") {
-    const day = dueDay ?? start.getDate();
-    const current = new Date(start.getFullYear(), start.getMonth(), day);
+    const anchorDay = dueDay ?? start.getUTCDate();
+    let current = clampToMonth(
+      start.getUTCFullYear(),
+      start.getUTCMonth(),
+      anchorDay
+    );
     if (current < start) {
-      current.setMonth(current.getMonth() + 1);
+      current = addMonthsClamped(start, 1, anchorDay);
     }
     while (current <= end) {
       dates.push(new Date(current));
-      current.setMonth(current.getMonth() + 1);
+      current = addMonthsClamped(current, 1, anchorDay);
     }
   } else {
     const days = frequency === "WEEKLY" ? 7 : 15;
     const current = new Date(start);
     while (current <= end) {
       dates.push(new Date(current));
-      current.setDate(current.getDate() + days);
+      current.setUTCDate(current.getUTCDate() + days);
     }
   }
 
