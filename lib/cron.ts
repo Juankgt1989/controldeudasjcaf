@@ -144,6 +144,7 @@ export function startReminderCron() {
           const baseMessage = [
             `*Deuda:* ${debt.name}`,
             `*Cuota:* ${formatDate(dueDate)}`,
+            `*Cuotas pendientes:* ${unpaidDates.length}`,
             `*Saldo pendiente:* ${formatCurrency(balance)}`,
             `*Frecuencia:* ${formatFrequency(debt.paymentFrequency)}`,
           ].join("\n");
