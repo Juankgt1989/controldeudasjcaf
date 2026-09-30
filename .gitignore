@@ -8,3 +8,4 @@ node_modules/
 query.sql
 docker-compose.override.yml
 deploy.sh
+tsconfig.tsbuildinfo
