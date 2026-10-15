@@ -97,7 +97,8 @@ export function DebtManager() {
         const calculated = calculateEndDate(
           draft.startDate,
           draft.paymentFrequency as PaymentFrequency,
-          n
+          n,
+          draft.dueDay ? parseInt(draft.dueDay, 10) : null
         );
         effectiveEndDate = calculated.toISOString().split("T")[0];
       }
@@ -123,7 +124,8 @@ export function DebtManager() {
         return calculateEndDate(
           form.startDate,
           form.paymentFrequency as PaymentFrequency,
-          n
+          n,
+          form.dueDay ? parseInt(form.dueDay, 10) : null
         )
           .toISOString()
           .split("T")[0];
@@ -146,7 +148,8 @@ export function DebtManager() {
         const calculated = calculateEndDate(
           draft.startDate,
           draft.paymentFrequency as PaymentFrequency,
-          n
+          n,
+          draft.dueDay ? parseInt(draft.dueDay, 10) : null
         );
         draft.endDate = calculated.toISOString().split("T")[0];
       }

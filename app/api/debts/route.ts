@@ -88,7 +88,12 @@ export async function POST(req: NextRequest) {
 
     const calculatedEndDate =
       installments && installments > 0
-        ? calculateEndDate(startDate, paymentFrequency, installments)
+        ? calculateEndDate(
+            startDate,
+            paymentFrequency,
+            installments,
+            dueDay ? parseInt(dueDay, 10) : null
+          )
         : endDate
           ? new Date(endDate)
           : null;

@@ -60,7 +60,8 @@ export async function PUT(
         calculatedEndDate = calculateEndDate(
           startDate || new Date().toISOString(),
           freq,
-          installments
+          installments,
+          dueDay ? parseInt(dueDay, 10) : null
         );
       }
     } else if (endDate !== undefined) {
