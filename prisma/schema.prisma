@@ -68,9 +68,9 @@ model InstallmentNotification {
   dueDateSent     Boolean  @default(false)
   confirmed       Boolean  @default(false)
   lastOverdueSent DateTime?
-  // Silencia los recordatorios de esta cuota sin marcarla como pagada.
-  // Se usa cuando el cobro se esta gestionando fuera de la app.
-  remindersSuppressed Boolean @default(false)
+  // Silencia los recordatorios de esta cuota hasta esta fecha. Pasada la
+  // fecha, los avisos se reactivan solos si la cuota sigue impaga.
+  remindersSuppressedUntil DateTime?
   sentMessageIds  String[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
