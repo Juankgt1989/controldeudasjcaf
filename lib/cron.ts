@@ -233,6 +233,9 @@ export function startReminderCron() {
             });
           }
 
+          // Cuota silenciada: el cobro se gestiona fuera de la app.
+          if (notification.remindersSuppressed) continue;
+
           if (notification.confirmed && !isOverdue) continue;
 
           const baseMessage = [
