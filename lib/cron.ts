@@ -42,6 +42,99 @@ function getGuatemalaHour(now: Date): number {
   );
 }
 
+const GUATEMALA_TZ = "America/Guatemala";
+// Lunes 09:00 hora Guatemala
+const WEEKLY_SUMMARY_CRON = "0 9 * * 1";
+
+async function sendWeeklySummary() {
+  console.log("Running weekly summary:", new Date().toISOString());
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: { telegramChatId: { not: null } },
+      select: { telegramChatId: true },
+    });
+
+    if (!user?.telegramChatId) {
+      console.log("No Telegram chat ID configured");
+      return;
+    }
+
+    const debts = await prisma.debt.findMany({
+      where: { status: { not: "PAID" } },
+      include: { payments: { select: { amount: true } } },
+      orderBy: { name: "asc" },
+    });
+
+    const ahora = new Date();
+    const bloques: string[] = [];
+    let totalPendiente = 0;
+
+    for (const debt of debts) {
+      const paid = debt.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const balance = Number(debt.totalAmount) - paid;
+      if (balance <= 0) continue;
+
+      const dueDates = getDueDates(
+        debt.startDate,
+        debt.endDate,
+        debt.paymentFrequency as PaymentFrequency,
+        debt.dueDay ?? undefined
+      );
+      if (dueDates.length === 0) continue;
+
+      const installment = Number(debt.totalAmount) / dueDates.length;
+      const unpaid = dueDates.filter((_d, i) => paid < installment * (i + 1));
+      if (unpaid.length === 0) continue;
+
+      const proxima = unpaid[0];
+      const dias = daysUntilDueDate(proxima, ahora);
+      const cuando =
+        dias < 0
+          ? `vencida hace ${Math.abs(dias)} día(s)`
+          : dias === 0
+            ? "vence hoy"
+            : `en ${dias} día(s)`;
+
+      totalPendiente += balance;
+      bloques.push(
+        `*${debt.name}*\n` +
+          `   ${unpaid.length} cuota(s) pendiente(s) de ${formatCurrency(installment)}\n` +
+          `   Próxima: ${formatDate(proxima)} (${cuando})\n` +
+          `   Saldo: ${formatCurrency(balance)}`
+      );
+    }
+
+    const cuerpo =
+      bloques.length > 0
+        ? bloques.join("\n\n")
+        : "Sin cuotas pendientes esta semana.";
+
+    const partes = [
+      "📊 *Resumen semanal de deudas*",
+      `_${formatDate(ahora)}_`,
+      "",
+      cuerpo,
+    ];
+
+    if (bloques.length > 0) {
+      partes.push("", `*Total pendiente:* ${formatCurrency(totalPendiente)}`);
+    }
+
+    await sendTelegramMessage(user.telegramChatId, partes.join("\n"));
+  } catch (error) {
+    console.error("Weekly summary error:", error);
+  }
+}
+
+function startWeeklySummary() {
+  // 'timezone' (minuscula) es el nombre correcto en node-cron v4.
+  cron.schedule(WEEKLY_SUMMARY_CRON, sendWeeklySummary, {
+    timezone: GUATEMALA_TZ,
+  });
+  console.log("Weekly summary cron started (Mondays 9 AM Guatemala)");
+}
+
 export function startReminderCron() {
   if (globalForCron.cronStarted) {
     return;
@@ -49,6 +142,7 @@ export function startReminderCron() {
   globalForCron.cronStarted = true;
 
   startTelegramPolling();
+  startWeeklySummary();
 
   cron.schedule("0 * * * *", async () => {
     console.log("Running reminder cron job:", new Date().toISOString());
