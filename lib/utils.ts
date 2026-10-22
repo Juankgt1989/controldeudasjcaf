@@ -53,9 +53,22 @@ function addMonthsClamped(
   return clampToMonth(date.getUTCFullYear(), date.getUTCMonth() + months, anchorDay);
 }
 
-// La fecha final es la fecha de la ULTIMA cuota. Debe tener en cuenta el
-// dueDay: si no, getDueDates puede generar una cuota menos (o ninguna) porque
-// su primera fecha no coincide con el dia del inicio.
+// Primera cuota: el primer dia de vencimiento ESTRICTAMENTE posterior al inicio.
+// Si el vencimiento cae el mismo dia que el inicio, la primera cuota pasa al mes
+// siguiente: una deuda de un mes no vence el mismo dia en que se contrae.
+// Si el vencimiento es posterior (ej. inicia el 1 y vence el 5), se queda en su
+// mes original, que es lo ya acordado con esos deudores.
+function firstDueDate(start: Date, anchorDay: number): Date {
+  const candidate = clampToMonth(
+    start.getUTCFullYear(),
+    start.getUTCMonth(),
+    anchorDay
+  );
+  return candidate <= start ? addMonthsClamped(start, 1, anchorDay) : candidate;
+}
+
+// La fecha final es la fecha de la ULTIMA cuota, calculada con la misma regla
+// que getDueDates para que el numero de cuotas siempre coincida.
 export function calculateEndDate(
   startDate: Date | string,
   frequency: PaymentFrequency,
@@ -65,11 +78,11 @@ export function calculateEndDate(
   const start = new Date(startDate);
 
   if (frequency === "MONTHLY") {
-    return addMonthsClamped(
-      start,
-      numberOfInstallments,
-      dueDay ?? start.getUTCDate()
-    );
+    const anchorDay = dueDay ?? start.getUTCDate();
+    const first = firstDueDate(start, anchorDay);
+    return numberOfInstallments <= 1
+      ? first
+      : addMonthsClamped(first, numberOfInstallments - 1, anchorDay);
   }
 
   const days = frequency === "WEEKLY" ? 7 : 15;
@@ -78,8 +91,6 @@ export function calculateEndDate(
   return end;
 }
 
-// La primera cuota vence UN periodo despues del inicio: una deuda de un mes
-// se paga al mes siguiente, no el mismo dia en que se contrae.
 export function getDueDates(
   startDate: Date | string,
   endDate: Date | string,
@@ -92,7 +103,7 @@ export function getDueDates(
 
   if (frequency === "MONTHLY") {
     const anchorDay = dueDay ?? start.getUTCDate();
-    let current = addMonthsClamped(start, 1, anchorDay);
+    let current = firstDueDate(start, anchorDay);
     while (current <= end) {
       dates.push(new Date(current));
       current = addMonthsClamped(current, 1, anchorDay);
