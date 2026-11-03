@@ -92,13 +92,13 @@ export default async function DashboardPage() {
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+        <div className="border-b border-zinc-200 px-4 py-4 sm:px-6 dark:border-zinc-800">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             Deudas vencidas
           </h2>
         </div>
         {overdueDebts.length === 0 ? (
-          <p className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400">
+          <p className="px-4 py-8 text-center text-zinc-500 sm:px-6 dark:text-zinc-400">
             No hay deudas vencidas
           </p>
         ) : (
@@ -106,8 +106,8 @@ export default async function DashboardPage() {
             {overdueDebts.map((debt) => {
               const balance = Number(debt.totalAmount) - debt.paid;
               return (
-                <li key={debt.id} className="px-6 py-4">
-                  <div className="flex items-center justify-between">
+                <li key={debt.id} className="px-4 py-4 sm:px-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="font-medium text-zinc-900 dark:text-zinc-100">
                         {debt.name}
@@ -117,7 +117,7 @@ export default async function DashboardPage() {
                         {formatDate(debt.startDate)} a {formatDate(debt.endDate)}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center justify-between sm:flex-col sm:items-end">
                       <p className="font-medium text-red-600 dark:text-red-500">
                         Saldo: {formatCurrency(balance)}
                       </p>
