@@ -441,125 +441,212 @@ export function DebtManager() {
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
-          <thead className="bg-zinc-50 dark:bg-zinc-800">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Nombre
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Total
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Saldo
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Cuota
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Próximo pago
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Periodo
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Estado
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                Acciones
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-            {debts.map((debt) => (
-              <tr key={debt.id}>
-                <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
-                  {debt.name}
-                </td>
-                <td className="px-6 py-4 text-zinc-900 dark:text-zinc-100">
-                  {formatCurrency(debt.totalAmount)}
-                </td>
-                <td className="px-6 py-4 font-medium text-indigo-600 dark:text-indigo-400">
-                  {formatCurrency(getBalance(debt))}
-                </td>
-                <td className="px-6 py-4">
-                  <p className="font-medium text-zinc-900 dark:text-zinc-100">
+      <>
+        <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm sm:block dark:border-zinc-800 dark:bg-zinc-900">
+          <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
+            <thead className="bg-zinc-50 dark:bg-zinc-800">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Nombre
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Total
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Saldo
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Cuota
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Próximo pago
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Periodo
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Estado
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Acciones
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {debts.map((debt) => (
+                <tr key={debt.id}>
+                  <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
+                    {debt.name}
+                  </td>
+                  <td className="px-6 py-4 text-zinc-900 dark:text-zinc-100">
+                    {formatCurrency(debt.totalAmount)}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-indigo-600 dark:text-indigo-400">
+                    {formatCurrency(getBalance(debt))}
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                      {formatCurrency(getInstallment(debt))}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {formatFrequency(debt.paymentFrequency)}
+                    </p>
+                  </td>
+                  <td className="px-6 py-4">
+                    {debt.status === "PAID" ? (
+                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                        Completado
+                      </p>
+                    ) : getNextDue(debt) ? (
+                      <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                        {formatDate(getNextDue(debt)!)}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                        Sin fechas
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-sm text-zinc-900 dark:text-zinc-100">
+                      {formatDate(debt.startDate)} - {formatDate(debt.endDate)}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {getDueDatesLabel(debt)}
+                    </p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                        statusStyles[debt.status] || statusStyles.ACTIVE
+                      }`}
+                    >
+                      {statusLabels[debt.status] || "Activa"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setPaymentDebt(debt)}
+                        className="rounded-md bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                      >
+                        Pago
+                      </button>
+                      <button
+                        onClick={() => startEdit(debt)}
+                        className="rounded-md bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(debt.id)}
+                        className="rounded-md bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {debts.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400"
+                  >
+                    No hay deudas registradas
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-3 sm:hidden">
+          {debts.length === 0 && (
+            <div className="rounded-xl border border-zinc-200 bg-white p-6 text-center text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+              No hay deudas registradas
+            </div>
+          )}
+          {debts.map((debt) => (
+            <div
+              key={debt.id}
+              className="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <div className="flex items-start justify-between border-b border-zinc-200 p-4 dark:border-zinc-800">
+                <div>
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    {debt.name}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    {formatDate(debt.startDate)} - {formatDate(debt.endDate)} · {getDueDatesLabel(debt)}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                    statusStyles[debt.status] || statusStyles.ACTIVE
+                  }`}
+                >
+                  {statusLabels[debt.status] || "Activa"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 p-4">
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Total</p>
+                  <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
+                    {formatCurrency(debt.totalAmount)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Saldo</p>
+                  <p className="mt-1 font-medium text-indigo-600 dark:text-indigo-400">
+                    {formatCurrency(getBalance(debt))}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Cuota</p>
+                  <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
                     {formatCurrency(getInstallment(debt))}
                   </p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     {formatFrequency(debt.paymentFrequency)}
                   </p>
-                </td>
-                <td className="px-6 py-4">
-                  {debt.status === "PAID" ? (
-                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                      Completado
-                    </p>
-                  ) : getNextDue(debt) ? (
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                      {formatDate(getNextDue(debt)!)}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                      Sin fechas
-                    </p>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <p className="text-sm text-zinc-900 dark:text-zinc-100">
-                    {formatDate(debt.startDate)} - {formatDate(debt.endDate)}
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Próximo pago</p>
+                  <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    {debt.status === "PAID"
+                      ? "Completado"
+                      : getNextDue(debt)
+                      ? formatDate(getNextDue(debt)!)
+                      : "Sin fechas"}
                   </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {getDueDatesLabel(debt)}
-                  </p>
-                </td>
-                <td className="px-6 py-4">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                      statusStyles[debt.status] || statusStyles.ACTIVE
-                    }`}
-                  >
-                    {statusLabels[debt.status] || "Activa"}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setPaymentDebt(debt)}
-                      className="rounded-md bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
-                    >
-                      Pago
-                    </button>
-                    <button
-                      onClick={() => startEdit(debt)}
-                      className="rounded-md bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleDelete(debt.id)}
-                      className="rounded-md bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {debts.length === 0 && (
-              <tr>
-                <td
-                  colSpan={8}
-                  className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400"
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
+                <button
+                  onClick={() => setPaymentDebt(debt)}
+                  className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
                 >
-                  No hay deudas registradas
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  Registrar pago
+                </button>
+                <button
+                  onClick={() => startEdit(debt)}
+                  className="flex-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDelete(debt.id)}
+                  className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
 
       {paymentDebt && (
         <PaymentModal
