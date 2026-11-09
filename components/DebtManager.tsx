@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   formatCurrency,
   formatDate,
@@ -70,6 +70,10 @@ export function DebtManager() {
   const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
   const [postponeDebt, setPostponeDebt] = useState<Debt | null>(null);
   const [postponing, setPostponing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | "OVERDUE" | "ACTIVE" | "PAID"
+  >("ALL");
   const [form, setForm] = useState({
     name: "",
     totalAmount: "",
@@ -266,17 +270,6 @@ export function DebtManager() {
     return parseFloat(debt.totalAmount) - paid;
   };
 
-  const getDueDatesLabel = (debt: Debt) => {
-    const dates = getDueDates(
-      debt.startDate,
-      debt.endDate,
-      debt.paymentFrequency,
-      debt.dueDay ?? undefined,
-      debt.numberOfInstallments
-    );
-    return `${dates.length} cuota${dates.length !== 1 ? "s" : ""}`;
-  };
-
   const getInstallment = (debt: Debt) => {
     return getInstallmentAmount(
       debt.totalAmount,
@@ -313,23 +306,6 @@ export function DebtManager() {
       paidInstallments,
       debt.numberOfInstallments
     );
-  };
-
-  const getOverdueDates = (debt: Debt) => {
-    if (debt.status === "PAID") return [];
-    const paid = debt.payments.reduce(
-      (sum, p) => sum + parseFloat(p.amount),
-      0
-    );
-    return getOverdueInstallments({
-      totalAmount: debt.totalAmount,
-      startDate: debt.startDate,
-      endDate: debt.endDate,
-      paymentFrequency: debt.paymentFrequency,
-      dueDay: debt.dueDay,
-      numberOfInstallments: debt.numberOfInstallments,
-      paid,
-    });
   };
 
   const getPostponePreview = (debt: Debt) => {
@@ -385,27 +361,175 @@ export function DebtManager() {
     };
   };
 
+  const enrichedDebts = useMemo(() => {
+    return debts
+      .map((debt) => {
+        const total = parseFloat(debt.totalAmount);
+        const paid = debt.payments.reduce(
+          (sum, p) => sum + parseFloat(p.amount),
+          0
+        );
+        const balance = Math.max(total - paid, 0);
+        const progress =
+          total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+
+        const dates = getDueDates(
+          debt.startDate,
+          debt.endDate,
+          debt.paymentFrequency,
+          debt.dueDay ?? undefined,
+          debt.numberOfInstallments
+        );
+        const installment = dates.length > 0 ? total / dates.length : 0;
+        const paidInstallments = getPaidInstallments(
+          paid,
+          total,
+          dates.length
+        );
+        const nextDue = getNextDueDate(
+          debt.startDate,
+          debt.endDate,
+          debt.paymentFrequency,
+          debt.dueDay ?? undefined,
+          paidInstallments,
+          debt.numberOfInstallments
+        );
+        const overdueDates =
+          debt.status === "PAID" || balance <= 0
+            ? []
+            : getOverdueInstallments({
+                totalAmount: total,
+                startDate: debt.startDate,
+                endDate: debt.endDate,
+                paymentFrequency: debt.paymentFrequency,
+                dueDay: debt.dueDay,
+                numberOfInstallments: debt.numberOfInstallments,
+                paid,
+              });
+        const overdueAmount = Math.min(
+          overdueDates.length * installment,
+          balance
+        );
+        const dueDatesLabel = `${dates.length} cuota${dates.length !== 1 ? "s" : ""}`;
+
+        return {
+          debt,
+          total,
+          paid,
+          balance,
+          progress,
+          installment,
+          nextDue,
+          overdueCount: overdueDates.length,
+          overdueAmount,
+          dueDatesLabel,
+        };
+      })
+      .sort((a, b) => {
+        const aPaid = a.debt.status === "PAID" ? 1 : 0;
+        const bPaid = b.debt.status === "PAID" ? 1 : 0;
+        if (aPaid !== bPaid) return aPaid - bPaid;
+
+        if (a.overdueCount !== b.overdueCount) {
+          return b.overdueCount - a.overdueCount;
+        }
+
+        const aNext = a.nextDue ? a.nextDue.getTime() : Infinity;
+        const bNext = b.nextDue ? b.nextDue.getTime() : Infinity;
+        return aNext - bNext;
+      });
+  }, [debts]);
+
+  const filterCounts = useMemo(() => {
+    let overdue = 0;
+    let active = 0;
+    let paid = 0;
+    for (const item of enrichedDebts) {
+      if (item.debt.status === "PAID") paid++;
+      else if (item.overdueCount > 0) overdue++;
+      else active++;
+    }
+    return {
+      all: enrichedDebts.length,
+      overdue,
+      active,
+      paid,
+    };
+  }, [enrichedDebts]);
+
+  const filteredDebts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return enrichedDebts.filter((item) => {
+      if (q && !item.debt.name.toLowerCase().includes(q)) return false;
+      if (statusFilter === "PAID") return item.debt.status === "PAID";
+      if (statusFilter === "OVERDUE")
+        return item.debt.status !== "PAID" && item.overdueCount > 0;
+      if (statusFilter === "ACTIVE")
+        return item.debt.status !== "PAID" && item.overdueCount === 0;
+      return true;
+    });
+  }, [enrichedDebts, searchQuery, statusFilter]);
+
   if (loading) return <p className="text-zinc-600 dark:text-zinc-400">Cargando...</p>;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-          Deudas
-        </h2>
-        <button
-          onClick={() => {
-            if (showForm) {
-              resetForm();
-            } else {
-              resetForm();
-              setShowForm(true);
-            }
-          }}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
-        >
-          {showForm ? "Cancelar" : "Nueva deuda"}
-        </button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
+          {(
+            [
+              { key: "ALL", label: "Todas", count: filterCounts.all },
+              { key: "OVERDUE", label: "Con atraso", count: filterCounts.overdue },
+              { key: "ACTIVE", label: "Al día / Activas", count: filterCounts.active },
+              { key: "PAID", label: "Pagadas", count: filterCounts.paid },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatusFilter(tab.key)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                statusFilter === tab.key
+                  ? "bg-indigo-600 text-white"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] ${
+                  statusFilter === tab.key
+                    ? "bg-indigo-500 text-white"
+                    : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Buscar deudor..."
+            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:w-52 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          />
+          <button
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+              } else {
+                resetForm();
+                setShowForm(true);
+              }
+            }}
+            className="whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+          >
+            {showForm ? "Cancelar" : "Nueva deuda"}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -589,125 +713,139 @@ export function DebtManager() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
-              {debts.map((debt) => (
-                <tr key={debt.id}>
-                  <td className="px-3 py-3 font-medium text-zinc-900 dark:text-zinc-100">
-                    {debt.name}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-zinc-900 dark:text-zinc-100">
-                    {formatCurrency(debt.totalAmount)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 font-medium text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(getBalance(debt))}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    <p className="font-medium text-zinc-900 dark:text-zinc-100">
-                      {formatCurrency(getInstallment(debt))}
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatFrequency(debt.paymentFrequency)}
-                    </p>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    {debt.status === "PAID" ? (
-                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                        Completado
+              {filteredDebts.map(
+                ({
+                  debt,
+                  balance,
+                  progress,
+                  installment,
+                  nextDue,
+                  overdueCount,
+                  overdueAmount,
+                  dueDatesLabel,
+                }) => (
+                  <tr key={debt.id}>
+                    <td className="px-3 py-3 font-medium text-zinc-900 dark:text-zinc-100">
+                      {debt.name}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-zinc-900 dark:text-zinc-100">
+                      {formatCurrency(debt.totalAmount)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      <p className="font-medium text-indigo-600 dark:text-indigo-400">
+                        {formatCurrency(balance)}
                       </p>
-                    ) : getNextDue(debt) ? (
-                      <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                        {formatShortDate(getNextDue(debt)!)}
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                          <div
+                            className="h-full rounded-full bg-green-500 transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                          {progress}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                        {formatCurrency(installment)}
                       </p>
-                    ) : (
-                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                        Sin fechas
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {formatFrequency(debt.paymentFrequency)}
                       </p>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    {(() => {
-                      const overdue = getOverdueDates(debt);
-                      if (overdue.length === 0) {
-                        return (
-                          <span className="text-sm text-zinc-400 dark:text-zinc-500">
-                            0
-                          </span>
-                        );
-                      }
-                      const overdueAmount = Math.min(
-                        overdue.length * getInstallment(debt),
-                        Math.max(getBalance(debt), 0)
-                      );
-                      return (
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {debt.status === "PAID" ? (
+                        <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                          Completado
+                        </p>
+                      ) : nextDue ? (
+                        <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {formatShortDate(nextDue)}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                          Sin fechas
+                        </p>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      {overdueCount === 0 ? (
+                        <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                          0
+                        </span>
+                      ) : (
                         <div>
                           <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
-                            {overdue.length}{" "}
-                            {overdue.length === 1 ? "atrasada" : "atrasadas"}
+                            {overdueCount}{" "}
+                            {overdueCount === 1 ? "atrasada" : "atrasadas"}
                           </span>
                           <p className="mt-0.5 text-xs font-medium text-red-600 dark:text-red-400">
                             {formatCurrency(overdueAmount)}
                           </p>
                         </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    <p className="text-xs text-zinc-900 dark:text-zinc-100">
-                      {formatShortDate(debt.startDate)} -{" "}
-                      {formatShortDate(debt.endDate)}
-                    </p>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {getDueDatesLabel(debt)}
-                    </p>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        statusStyles[debt.status] || statusStyles.ACTIVE
-                      }`}
-                    >
-                      {statusLabels[debt.status] || "Activa"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-right">
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <button
-                        onClick={() => setPaymentDebt(debt)}
-                        className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
-                      >
-                        Pago
-                      </button>
-                      {debt.status !== "PAID" && (
-                        <button
-                          onClick={() => setPostponeDebt(debt)}
-                          title="Aplazar pago por 1 mes"
-                          className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
-                        >
-                          Aplazar
-                        </button>
                       )}
-                      <button
-                        onClick={() => startEdit(debt)}
-                        className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      <p className="text-xs text-zinc-900 dark:text-zinc-100">
+                        {formatShortDate(debt.startDate)} -{" "}
+                        {formatShortDate(debt.endDate)}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {dueDatesLabel}
+                      </p>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          statusStyles[debt.status] || statusStyles.ACTIVE
+                        }`}
                       >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(debt.id)}
-                        className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {debts.length === 0 && (
+                        {statusLabels[debt.status] || "Activa"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <button
+                          onClick={() => setPaymentDebt(debt)}
+                          className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                        >
+                          Pago
+                        </button>
+                        {debt.status !== "PAID" && (
+                          <button
+                            onClick={() => setPostponeDebt(debt)}
+                            title="Aplazar pago por 1 mes"
+                            className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
+                          >
+                            Aplazar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => startEdit(debt)}
+                          className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(debt.id)}
+                          className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              )}
+              {filteredDebts.length === 0 && (
                 <tr>
                   <td
                     colSpan={9}
                     className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400"
                   >
-                    No hay deudas registradas
+                    No se encontraron deudas
                   </td>
                 </tr>
               )}
@@ -716,126 +854,144 @@ export function DebtManager() {
         </div>
 
         <div className="space-y-3 lg:hidden">
-          {debts.length === 0 && (
+          {filteredDebts.length === 0 && (
             <div className="rounded-xl border border-zinc-200 bg-white p-6 text-center text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-              No hay deudas registradas
+              No se encontraron deudas
             </div>
           )}
-          {debts.map((debt) => (
-            <div
-              key={debt.id}
-              className="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-            >
-              <div className="flex items-start justify-between border-b border-zinc-200 p-4 dark:border-zinc-800">
-                <div>
-                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">
-                    {debt.name}
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatDate(debt.startDate)} - {formatDate(debt.endDate)} · {getDueDatesLabel(debt)}
-                  </p>
+          {filteredDebts.map(
+            ({
+              debt,
+              balance,
+              progress,
+              installment,
+              nextDue,
+              overdueCount,
+              overdueAmount,
+              dueDatesLabel,
+            }) => (
+              <div
+                key={debt.id}
+                className="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                <div className="flex items-start justify-between border-b border-zinc-200 p-4 dark:border-zinc-800">
+                  <div>
+                    <p className="font-semibold text-zinc-900 dark:text-zinc-100">
+                      {debt.name}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      {formatDate(debt.startDate)} - {formatDate(debt.endDate)} ·{" "}
+                      {dueDatesLabel}
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                      statusStyles[debt.status] || statusStyles.ACTIVE
+                    }`}
+                  >
+                    {statusLabels[debt.status] || "Activa"}
+                  </span>
                 </div>
-                <span
-                  className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                    statusStyles[debt.status] || statusStyles.ACTIVE
-                  }`}
-                >
-                  {statusLabels[debt.status] || "Activa"}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 p-4">
-                <div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Total</p>
-                  <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
-                    {formatCurrency(debt.totalAmount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Saldo</p>
-                  <p className="mt-1 font-medium text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(getBalance(debt))}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Cuota</p>
-                  <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
-                    {formatCurrency(getInstallment(debt))}
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatFrequency(debt.paymentFrequency)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Próximo pago</p>
-                  <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                    {debt.status === "PAID"
-                      ? "Completado"
-                      : getNextDue(debt)
-                      ? formatDate(getNextDue(debt)!)
-                      : "Sin fechas"}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Cuotas atrasadas
-                  </p>
-                  {(() => {
-                    const overdue = getOverdueDates(debt);
-                    if (overdue.length === 0) {
-                      return (
-                        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                          0 (Al día)
-                        </p>
-                      );
-                    }
-                    const overdueAmount = Math.min(
-                      overdue.length * getInstallment(debt),
-                      Math.max(getBalance(debt), 0)
-                    );
-                    return (
+                <div className="grid grid-cols-2 gap-4 p-4">
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Total
+                    </p>
+                    <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
+                      {formatCurrency(debt.totalAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Saldo ({progress}% pagado)
+                    </p>
+                    <p className="mt-1 font-medium text-indigo-600 dark:text-indigo-400">
+                      {formatCurrency(balance)}
+                    </p>
+                    <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                      <div
+                        className="h-full rounded-full bg-green-500 transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Cuota
+                    </p>
+                    <p className="mt-1 font-medium text-zinc-900 dark:text-zinc-100">
+                      {formatCurrency(installment)}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {formatFrequency(debt.paymentFrequency)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Próximo pago
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {debt.status === "PAID"
+                        ? "Completado"
+                        : nextDue
+                        ? formatDate(nextDue)
+                        : "Sin fechas"}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Cuotas atrasadas
+                    </p>
+                    {overdueCount === 0 ? (
+                      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                        0 (Al día)
+                      </p>
+                    ) : (
                       <div className="mt-1 flex items-center gap-2">
                         <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
-                          {overdue.length}{" "}
-                          {overdue.length === 1 ? "cuota atrasada" : "cuotas atrasadas"}
+                          {overdueCount}{" "}
+                          {overdueCount === 1
+                            ? "cuota atrasada"
+                            : "cuotas atrasadas"}
                         </span>
                         <span className="text-sm font-medium text-red-600 dark:text-red-400">
                           ({formatCurrency(overdueAmount)})
                         </span>
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
+                  <button
+                    onClick={() => setPaymentDebt(debt)}
+                    className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                  >
+                    Registrar pago
+                  </button>
+                  {debt.status !== "PAID" && (
+                    <button
+                      onClick={() => setPostponeDebt(debt)}
+                      className="flex-1 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
+                    >
+                      Aplazar 1 mes
+                    </button>
+                  )}
+                  <button
+                    onClick={() => startEdit(debt)}
+                    className="flex-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(debt.id)}
+                    className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                  >
+                    Eliminar
+                  </button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-                <button
-                  onClick={() => setPaymentDebt(debt)}
-                  className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
-                >
-                  Registrar pago
-                </button>
-                {debt.status !== "PAID" && (
-                  <button
-                    onClick={() => setPostponeDebt(debt)}
-                    className="flex-1 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
-                  >
-                    Aplazar 1 mes
-                  </button>
-                )}
-                <button
-                  onClick={() => startEdit(debt)}
-                  className="flex-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDelete(debt.id)}
-                  className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
-                >
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          )}
         </div>
       </>
 

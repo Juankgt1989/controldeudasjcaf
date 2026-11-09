@@ -1,29 +1,35 @@
 import { PaymentFrequency } from "@prisma/client";
 
+const currencyFormatter = new Intl.NumberFormat("es-GT", {
+  style: "currency",
+  currency: "GTQ",
+});
+
+const longDateFormatter = new Intl.DateTimeFormat("es-GT", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+const shortDateFormatter = new Intl.DateTimeFormat("es-GT", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 export function formatCurrency(amount: number | string | bigint) {
   const value = typeof amount === "string" ? parseFloat(amount) : Number(amount);
-  return new Intl.NumberFormat("es-GT", {
-    style: "currency",
-    currency: "GTQ",
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 export function formatDate(date: Date | string) {
-  return new Intl.DateTimeFormat("es-GT", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(date));
+  return longDateFormatter.format(new Date(date));
 }
 
 export function formatShortDate(date: Date | string) {
-  return new Intl.DateTimeFormat("es-GT", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(date));
+  return shortDateFormatter.format(new Date(date));
 }
 
 export function formatFrequency(frequency: PaymentFrequency) {

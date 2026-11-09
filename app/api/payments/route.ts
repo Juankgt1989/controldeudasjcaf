@@ -40,39 +40,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const debt = await prisma.debt.findUnique({ where: { id: debtId } });
-
-    if (!debt) {
-      return NextResponse.json({ error: "Debt not found" }, { status: 404 });
-    }
-
-    const payment = await prisma.payment.create({
-      data: {
-        debtId,
-        amount: parseFloat(amount),
-        paymentDate: new Date(paymentDate),
-        notes: notes || undefined,
-      },
-    });
-
-    const debtWithPayments = await prisma.debt.findUnique({
+    const debt = await prisma.debt.findUnique({
       where: { id: debtId },
       include: {
         payments: { select: { amount: true } },
       },
     });
 
-    if (debtWithPayments) {
-      const paid = debtWithPayments.payments.reduce(
-        (sum, p) => sum + Number(p.amount),
-        0
-      );
-      if (paid >= Number(debtWithPayments.totalAmount)) {
-        await prisma.debt.update({
-          where: { id: debtId },
-          data: { status: "PAID" },
-        });
-      }
+    if (!debt) {
+      return NextResponse.json({ error: "Debt not found" }, { status: 404 });
+    }
+
+    const numericAmount = parseFloat(amount);
+
+    const payment = await prisma.payment.create({
+      data: {
+        debtId,
+        amount: numericAmount,
+        paymentDate: new Date(paymentDate),
+        notes: notes || undefined,
+      },
+    });
+
+    const previouslyPaid = debt.payments.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0
+    );
+    if (previouslyPaid + numericAmount >= Number(debt.totalAmount)) {
+      await prisma.debt.update({
+        where: { id: debtId },
+        data: { status: "PAID" },
+      });
     }
 
     return NextResponse.json(payment, { status: 201 });

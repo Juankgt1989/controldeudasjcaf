@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface Debt {
@@ -34,24 +34,41 @@ export function PaymentsManager() {
     fetchPayments();
   }, []);
 
-  const debtNames = Array.from(
-    new Set(payments.map((p) => p.debt.name))
-  ).sort();
+  const debtNames = useMemo(
+    () => Array.from(new Set(payments.map((p) => p.debt.name))).sort(),
+    [payments]
+  );
 
-  const filtered =
-    filterDebt === "ALL"
-      ? payments
-      : payments.filter((p) => p.debt.name === filterDebt);
+  const filtered = useMemo(
+    () =>
+      filterDebt === "ALL"
+        ? payments
+        : payments.filter((p) => p.debt.name === filterDebt),
+    [payments, filterDebt]
+  );
+
+  const totalFiltered = useMemo(
+    () => filtered.reduce((sum, p) => sum + parseFloat(p.amount), 0),
+    [filtered]
+  );
 
   if (loading)
     return <p className="text-zinc-600 dark:text-zinc-400">Cargando...</p>;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-          Historial de pagos
-        </h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            Historial de pagos
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {filtered.length} {filtered.length === 1 ? "pago" : "pagos"} · Total:{" "}
+            <span className="font-semibold text-green-600 dark:text-green-400">
+              {formatCurrency(totalFiltered)}
+            </span>
+          </p>
+        </div>
         <select
           value={filterDebt}
           onChange={(e) => setFilterDebt(e.target.value)}
@@ -67,7 +84,7 @@ export function PaymentsManager() {
       </div>
 
       <>
-        <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm sm:block dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="hidden overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:block dark:border-zinc-800 dark:bg-zinc-900">
           <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
             <thead className="bg-zinc-50 dark:bg-zinc-800">
               <tr>
