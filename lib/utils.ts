@@ -17,6 +17,15 @@ export function formatDate(date: Date | string) {
   }).format(new Date(date));
 }
 
+export function formatShortDate(date: Date | string) {
+  return new Intl.DateTimeFormat("es-GT", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(date));
+}
+
 export function formatFrequency(frequency: PaymentFrequency) {
   switch (frequency) {
     case "WEEKLY":

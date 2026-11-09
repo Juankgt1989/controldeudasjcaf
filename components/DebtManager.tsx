@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import {
   formatCurrency,
   formatDate,
+  formatShortDate,
   formatFrequency,
   getDueDates,
   getInstallmentAmount,
@@ -554,52 +555,52 @@ export function DebtManager() {
       )}
 
       <>
-        <div className="hidden overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm sm:block dark:border-zinc-800 dark:bg-zinc-900">
-          <table className="min-w-full divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div className="hidden rounded-xl border border-zinc-200 bg-white shadow-sm lg:block dark:border-zinc-800 dark:bg-zinc-900">
+          <table className="w-full table-auto divide-y divide-zinc-200 dark:divide-zinc-800">
             <thead className="bg-zinc-50 dark:bg-zinc-800">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Nombre
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Total
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Saldo
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Cuota
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Próximo pago
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
-                  Cuotas atrasadas
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Atrasadas
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Periodo
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Estado
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                <th className="px-3 py-3 text-right text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Acciones
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <tbody className="divide-y divide-zinc-200 text-sm dark:divide-zinc-800">
               {debts.map((debt) => (
                 <tr key={debt.id}>
-                  <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100">
+                  <td className="px-3 py-3 font-medium text-zinc-900 dark:text-zinc-100">
                     {debt.name}
                   </td>
-                  <td className="px-6 py-4 text-zinc-900 dark:text-zinc-100">
+                  <td className="whitespace-nowrap px-3 py-3 text-zinc-900 dark:text-zinc-100">
                     {formatCurrency(debt.totalAmount)}
                   </td>
-                  <td className="px-6 py-4 font-medium text-indigo-600 dark:text-indigo-400">
+                  <td className="whitespace-nowrap px-3 py-3 font-medium text-indigo-600 dark:text-indigo-400">
                     {formatCurrency(getBalance(debt))}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="whitespace-nowrap px-3 py-3">
                     <p className="font-medium text-zinc-900 dark:text-zinc-100">
                       {formatCurrency(getInstallment(debt))}
                     </p>
@@ -607,14 +608,14 @@ export function DebtManager() {
                       {formatFrequency(debt.paymentFrequency)}
                     </p>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="whitespace-nowrap px-3 py-3">
                     {debt.status === "PAID" ? (
                       <p className="text-sm text-zinc-400 dark:text-zinc-500">
                         Completado
                       </p>
                     ) : getNextDue(debt) ? (
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                        {formatDate(getNextDue(debt)!)}
+                        {formatShortDate(getNextDue(debt)!)}
                       </p>
                     ) : (
                       <p className="text-sm text-zinc-400 dark:text-zinc-500">
@@ -622,7 +623,7 @@ export function DebtManager() {
                       </p>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="whitespace-nowrap px-3 py-3">
                     {(() => {
                       const overdue = getOverdueDates(debt);
                       if (overdue.length === 0) {
@@ -638,59 +639,61 @@ export function DebtManager() {
                       );
                       return (
                         <div>
-                          <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
+                          <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
                             {overdue.length}{" "}
                             {overdue.length === 1 ? "atrasada" : "atrasadas"}
                           </span>
-                          <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">
+                          <p className="mt-0.5 text-xs font-medium text-red-600 dark:text-red-400">
                             {formatCurrency(overdueAmount)}
                           </p>
                         </div>
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm text-zinc-900 dark:text-zinc-100">
-                      {formatDate(debt.startDate)} - {formatDate(debt.endDate)}
+                  <td className="whitespace-nowrap px-3 py-3">
+                    <p className="text-xs text-zinc-900 dark:text-zinc-100">
+                      {formatShortDate(debt.startDate)} -{" "}
+                      {formatShortDate(debt.endDate)}
                     </p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       {getDueDatesLabel(debt)}
                     </p>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="whitespace-nowrap px-3 py-3">
                     <span
-                      className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                         statusStyles[debt.status] || statusStyles.ACTIVE
                       }`}
                     >
                       {statusLabels[debt.status] || "Activa"}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       <button
                         onClick={() => setPaymentDebt(debt)}
-                        className="rounded-md bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                        className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
                       >
                         Pago
                       </button>
                       {debt.status !== "PAID" && (
                         <button
                           onClick={() => setPostponeDebt(debt)}
-                          className="rounded-md bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
+                          title="Aplazar pago por 1 mes"
+                          className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
                         >
-                          Aplazar 1 mes
+                          Aplazar
                         </button>
                       )}
                       <button
                         onClick={() => startEdit(debt)}
-                        className="rounded-md bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
+                        className="rounded-md bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
                       >
                         Editar
                       </button>
                       <button
                         onClick={() => handleDelete(debt.id)}
-                        className="rounded-md bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
+                        className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
                       >
                         Eliminar
                       </button>
@@ -702,7 +705,7 @@ export function DebtManager() {
                 <tr>
                   <td
                     colSpan={9}
-                    className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400"
+                    className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400"
                   >
                     No hay deudas registradas
                   </td>
@@ -712,7 +715,7 @@ export function DebtManager() {
           </table>
         </div>
 
-        <div className="space-y-3 sm:hidden">
+        <div className="space-y-3 lg:hidden">
           {debts.length === 0 && (
             <div className="rounded-xl border border-zinc-200 bg-white p-6 text-center text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
               No hay deudas registradas
