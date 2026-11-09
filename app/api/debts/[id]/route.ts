@@ -51,12 +51,45 @@ export async function PUT(
       );
     }
 
+    const parsedTotal =
+      totalAmount !== undefined ? parseFloat(totalAmount) : undefined;
+    if (
+      parsedTotal !== undefined &&
+      (!Number.isFinite(parsedTotal) || parsedTotal <= 0)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid total amount" },
+        { status: 400 }
+      );
+    }
+
+    const parsedDueDay =
+      dueDay !== undefined ? (dueDay ? parseInt(dueDay, 10) : null) : undefined;
+    if (
+      typeof parsedDueDay === "number" &&
+      (!Number.isInteger(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31)
+    ) {
+      return NextResponse.json(
+        { error: "dueDay must be between 1 and 31" },
+        { status: 400 }
+      );
+    }
+
     const installments =
       numberOfInstallments !== undefined
         ? numberOfInstallments
           ? parseInt(numberOfInstallments, 10)
           : null
         : undefined;
+    if (
+      typeof installments === "number" &&
+      (!Number.isInteger(installments) || installments < 1 || installments > 600)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid number of installments" },
+        { status: 400 }
+      );
+    }
 
     let calculatedEndDate: Date | undefined;
     if (endDate) {
@@ -68,7 +101,7 @@ export async function PUT(
           startDate || new Date().toISOString(),
           freq,
           installments,
-          dueDay ? parseInt(dueDay, 10) : null
+          parsedDueDay ?? null
         );
       }
     }
@@ -76,17 +109,12 @@ export async function PUT(
     const debt = await prisma.debt.update({
       where: { id },
       data: {
-        name: name || undefined,
-        totalAmount: totalAmount ? parseFloat(totalAmount) : undefined,
+        name: name ? String(name).trim() : undefined,
+        totalAmount: parsedTotal,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: calculatedEndDate,
         paymentFrequency: paymentFrequency || undefined,
-        dueDay:
-          dueDay !== undefined
-            ? dueDay
-              ? parseInt(dueDay, 10)
-              : null
-            : undefined,
+        dueDay: parsedDueDay,
         status: status || undefined,
         numberOfInstallments: installments,
       },
@@ -116,8 +144,11 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const months =
-      typeof body.months === "number" && body.months > 0
-        ? Math.floor(body.months)
+      typeof body.months === "number" &&
+      Number.isInteger(body.months) &&
+      body.months >= 1 &&
+      body.months <= 24
+        ? body.months
         : 1;
 
     const existing = await prisma.debt.findUnique({

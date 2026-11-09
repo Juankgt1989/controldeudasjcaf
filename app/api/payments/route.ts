@@ -52,13 +52,27 @@ export async function POST(req: NextRequest) {
     }
 
     const numericAmount = parseFloat(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return NextResponse.json(
+        { error: "Invalid payment amount" },
+        { status: 400 }
+      );
+    }
+
+    const parsedDate = new Date(paymentDate);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid payment date" },
+        { status: 400 }
+      );
+    }
 
     const payment = await prisma.payment.create({
       data: {
         debtId,
         amount: numericAmount,
-        paymentDate: new Date(paymentDate),
-        notes: notes || undefined,
+        paymentDate: parsedDate,
+        notes: notes ? String(notes).trim() : undefined,
       },
     });
 

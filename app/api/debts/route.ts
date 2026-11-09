@@ -83,9 +83,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const parsedTotal = parseFloat(totalAmount);
+    if (!Number.isFinite(parsedTotal) || parsedTotal <= 0) {
+      return NextResponse.json(
+        { error: "Invalid total amount" },
+        { status: 400 }
+      );
+    }
+
+    const parsedStart = new Date(startDate);
+    if (Number.isNaN(parsedStart.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid start date" },
+        { status: 400 }
+      );
+    }
+
+    const parsedDueDay = dueDay ? parseInt(dueDay, 10) : null;
+    if (
+      parsedDueDay !== null &&
+      (!Number.isInteger(parsedDueDay) || parsedDueDay < 1 || parsedDueDay > 31)
+    ) {
+      return NextResponse.json(
+        { error: "dueDay must be between 1 and 31" },
+        { status: 400 }
+      );
+    }
+
     const installments = numberOfInstallments
       ? parseInt(numberOfInstallments, 10)
       : null;
+    if (
+      installments !== null &&
+      (!Number.isInteger(installments) || installments < 1 || installments > 600)
+    ) {
+      return NextResponse.json(
+        { error: "Invalid number of installments" },
+        { status: 400 }
+      );
+    }
 
     const calculatedEndDate =
       installments && installments > 0
@@ -93,13 +129,13 @@ export async function POST(req: NextRequest) {
             startDate,
             paymentFrequency,
             installments,
-            dueDay ? parseInt(dueDay, 10) : null
+            parsedDueDay
           )
         : endDate
           ? new Date(endDate)
           : null;
 
-    if (!calculatedEndDate) {
+    if (!calculatedEndDate || Number.isNaN(calculatedEndDate.getTime())) {
       return NextResponse.json(
         { error: "endDate or numberOfInstallments is required" },
         { status: 400 }
@@ -108,12 +144,12 @@ export async function POST(req: NextRequest) {
 
     const debt = await prisma.debt.create({
       data: {
-        name,
-        totalAmount: parseFloat(totalAmount),
-        startDate: new Date(startDate),
+        name: String(name).trim(),
+        totalAmount: parsedTotal,
+        startDate: parsedStart,
         endDate: calculatedEndDate,
         paymentFrequency,
-        dueDay: dueDay ? parseInt(dueDay, 10) : null,
+        dueDay: parsedDueDay,
         numberOfInstallments: installments,
         status: status || undefined,
       },

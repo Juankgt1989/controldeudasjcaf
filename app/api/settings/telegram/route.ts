@@ -12,11 +12,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { telegramChatId } = body;
+    const rawChatId =
+      typeof body.telegramChatId === "string"
+        ? body.telegramChatId.trim()
+        : "";
+
+    if (rawChatId && !/^-?\d{1,20}$/.test(rawChatId)) {
+      return NextResponse.json(
+        { error: "Invalid Telegram chat ID" },
+        { status: 400 }
+      );
+    }
 
     await prisma.user.update({
       where: { id: session.user.id },
-      data: { telegramChatId },
+      data: { telegramChatId: rawChatId || null },
     });
 
     return NextResponse.json({ success: true });

@@ -86,10 +86,15 @@ export function DebtManager() {
   const [previewDates, setPreviewDates] = useState<Date[]>([]);
 
   const fetchDebts = async () => {
-    const res = await fetch("/api/debts");
-    const data = await res.json();
-    setDebts(data);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/debts");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setDebts(data);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

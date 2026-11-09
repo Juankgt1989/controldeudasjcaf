@@ -1,7 +1,13 @@
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
 import { sendTelegramMessage, sendTelegramMessageWithConfirm, startTelegramPolling } from "@/lib/telegram";
-import { getDueDates, formatCurrency, formatFrequency, formatDate } from "@/lib/utils";
+import {
+  getDueDates,
+  formatCurrency,
+  formatFrequency,
+  formatDate,
+  escapeTelegramMarkdown,
+} from "@/lib/utils";
 import { PaymentFrequency } from "@prisma/client";
 
 const globalForCron = global as unknown as { cronStarted?: boolean };
@@ -99,7 +105,7 @@ async function sendWeeklySummary() {
 
       totalPendiente += balance;
       bloques.push(
-        `*${debt.name}*\n` +
+        `*${escapeTelegramMarkdown(debt.name)}*\n` +
           `   ${unpaid.length} cuota(s) pendiente(s) de ${formatCurrency(installment)}\n` +
           `   Próxima: ${formatDate(proxima)} (${cuando})\n` +
           `   Saldo: ${formatCurrency(balance)}`
@@ -247,7 +253,7 @@ export function startReminderCron() {
           if (notification.confirmed && !isOverdue) continue;
 
           const baseMessage = [
-            `*Deuda:* ${debt.name}`,
+            `*Deuda:* ${escapeTelegramMarkdown(debt.name)}`,
             `*Cuota:* ${formatDate(dueDate)}`,
             `*Cuotas pendientes:* ${unpaidDates.length}`,
             `*Saldo pendiente:* ${formatCurrency(balance)}`,

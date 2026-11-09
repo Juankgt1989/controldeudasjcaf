@@ -1,6 +1,11 @@
 import TelegramBot from "node-telegram-bot-api";
 import { prisma } from "@/lib/prisma";
-import { getInstallmentAmount, formatCurrency, formatDate } from "@/lib/utils";
+import {
+  getInstallmentAmount,
+  formatCurrency,
+  formatDate,
+  escapeTelegramMarkdown,
+} from "@/lib/utils";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -17,6 +22,18 @@ export function startTelegramPolling() {
 
     const data = query.data;
     const chatId = query.message.chat.id.toString();
+
+    const authorizedUser = await prisma.user.findFirst({
+      where: { telegramChatId: chatId },
+      select: { id: true },
+    });
+
+    if (!authorizedUser) {
+      bot
+        .answerCallbackQuery(query.id, { text: "No autorizado" })
+        .catch(() => {});
+      return;
+    }
 
     if (data.startsWith("confirm_")) {
       const notificationId = data.replace("confirm_", "");
@@ -108,7 +125,7 @@ export function startTelegramPolling() {
         if (amount <= 0) {
           bot.answerCallbackQuery(query.id, { text: "La deuda ya está al día" }).catch(() => {});
           await bot.editMessageText(
-            `✅ *Deuda al día*\n\n*Deuda:* ${debt.name}\nNo se registró ningún pago.`,
+            `✅ *Deuda al día*\n\n*Deuda:* ${escapeTelegramMarkdown(debt.name)}\nNo se registró ningún pago.`,
             {
               chat_id: chatId,
               message_id: query.message.message_id,
@@ -144,7 +161,7 @@ export function startTelegramPolling() {
         bot.answerCallbackQuery(query.id, { text: `Pago de ${formatCurrency(amount)} registrado ✓` }).catch(() => {});
 
         await bot.editMessageText(
-          `✅ *Pago registrado*\n\n*Deuda:* ${debt.name}\n*Cuota:* ${formatDate(notification.dueDate)}\n*Monto:* ${formatCurrency(amount)}\n\n_El pago quedó registrado en la aplicación._`,
+          `✅ *Pago registrado*\n\n*Deuda:* ${escapeTelegramMarkdown(debt.name)}\n*Cuota:* ${formatDate(notification.dueDate)}\n*Monto:* ${formatCurrency(amount)}\n\n_El pago quedó registrado en la aplicación._`,
           {
             chat_id: chatId,
             message_id: query.message.message_id,
@@ -205,7 +222,7 @@ export function startTelegramPolling() {
         bot.answerCallbackQuery(query.id, { text: "Confirmar" }).catch(() => {});
 
         await bot.editMessageText(
-          `💳 *Confirmar registro de pago*\n\n*Deuda:* ${debt.name}\n*Cuota:* ${formatDate(notification.dueDate)}\n*Monto:* ${formatCurrency(amount)}\n\n_¿Registrar este pago en la aplicación?_`,
+          `💳 *Confirmar registro de pago*\n\n*Deuda:* ${escapeTelegramMarkdown(debt.name)}\n*Cuota:* ${formatDate(notification.dueDate)}\n*Monto:* ${formatCurrency(amount)}\n\n_¿Registrar este pago en la aplicación?_`,
           {
             chat_id: chatId,
             message_id: query.message.message_id,

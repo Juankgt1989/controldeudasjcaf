@@ -1,4 +1,7 @@
 import { Navbar } from "@/components/Navbar";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 const links = [
   { href: "/", label: "Dashboard" },
@@ -7,11 +10,17 @@ const links = [
   { href: "/settings", label: "Configuración" },
 ];
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect("/login");
+  }
+
   return (
     <>
       <Navbar links={links} />

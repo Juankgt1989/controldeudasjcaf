@@ -23,10 +23,15 @@ export function PaymentsManager() {
   const [filterDebt, setFilterDebt] = useState("ALL");
 
   const fetchPayments = async () => {
-    const res = await fetch("/api/payments");
-    const data = await res.json();
-    setPayments(data);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/payments");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setPayments(data);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

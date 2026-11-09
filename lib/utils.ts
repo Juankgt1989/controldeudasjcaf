@@ -32,6 +32,10 @@ export function formatShortDate(date: Date | string) {
   return shortDateFormatter.format(new Date(date));
 }
 
+export function escapeTelegramMarkdown(text: string): string {
+  return text.replace(/([_*`\[])/g, "\\$1");
+}
+
 export function formatFrequency(frequency: PaymentFrequency) {
   switch (frequency) {
     case "WEEKLY":
