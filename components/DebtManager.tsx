@@ -8,6 +8,7 @@ import {
   getDueDates,
   getInstallmentAmount,
   getNextDueDate,
+  getOverdueInstallments,
   getPaidInstallments,
   calculateEndDate,
   postponeEndDate,
@@ -313,6 +314,23 @@ export function DebtManager() {
     );
   };
 
+  const getOverdueDates = (debt: Debt) => {
+    if (debt.status === "PAID") return [];
+    const paid = debt.payments.reduce(
+      (sum, p) => sum + parseFloat(p.amount),
+      0
+    );
+    return getOverdueInstallments({
+      totalAmount: debt.totalAmount,
+      startDate: debt.startDate,
+      endDate: debt.endDate,
+      paymentFrequency: debt.paymentFrequency,
+      dueDay: debt.dueDay,
+      numberOfInstallments: debt.numberOfInstallments,
+      paid,
+    });
+  };
+
   const getPostponePreview = (debt: Debt) => {
     const paid = debt.payments.reduce(
       (sum, p) => sum + parseFloat(p.amount),
@@ -556,6 +574,9 @@ export function DebtManager() {
                   Próximo pago
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                  Cuotas atrasadas
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
                   Periodo
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
@@ -600,6 +621,33 @@ export function DebtManager() {
                         Sin fechas
                       </p>
                     )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {(() => {
+                      const overdue = getOverdueDates(debt);
+                      if (overdue.length === 0) {
+                        return (
+                          <span className="text-sm text-zinc-400 dark:text-zinc-500">
+                            0
+                          </span>
+                        );
+                      }
+                      const overdueAmount = Math.min(
+                        overdue.length * getInstallment(debt),
+                        Math.max(getBalance(debt), 0)
+                      );
+                      return (
+                        <div>
+                          <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
+                            {overdue.length}{" "}
+                            {overdue.length === 1 ? "atrasada" : "atrasadas"}
+                          </span>
+                          <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">
+                            {formatCurrency(overdueAmount)}
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4">
                     <p className="text-sm text-zinc-900 dark:text-zinc-100">
@@ -653,7 +701,7 @@ export function DebtManager() {
               {debts.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-6 py-8 text-center text-zinc-500 dark:text-zinc-400"
                   >
                     No hay deudas registradas
@@ -723,6 +771,36 @@ export function DebtManager() {
                       ? formatDate(getNextDue(debt)!)
                       : "Sin fechas"}
                   </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Cuotas atrasadas
+                  </p>
+                  {(() => {
+                    const overdue = getOverdueDates(debt);
+                    if (overdue.length === 0) {
+                      return (
+                        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                          0 (Al día)
+                        </p>
+                      );
+                    }
+                    const overdueAmount = Math.min(
+                      overdue.length * getInstallment(debt),
+                      Math.max(getBalance(debt), 0)
+                    );
+                    return (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-400">
+                          {overdue.length}{" "}
+                          {overdue.length === 1 ? "cuota atrasada" : "cuotas atrasadas"}
+                        </span>
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                          ({formatCurrency(overdueAmount)})
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">

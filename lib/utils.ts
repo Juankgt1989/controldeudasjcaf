@@ -317,6 +317,43 @@ function guatemalaTodayKey(): string {
   return gtDateFormatter.format(new Date());
 }
 
+export function getOverdueInstallments(args: {
+  totalAmount: number | string;
+  startDate: Date | string;
+  endDate: Date | string;
+  paymentFrequency: PaymentFrequency;
+  dueDay?: number | null;
+  numberOfInstallments?: number | null;
+  paid: number;
+}): Date[] {
+  const {
+    totalAmount,
+    startDate,
+    endDate,
+    paymentFrequency,
+    dueDay,
+    numberOfInstallments,
+    paid,
+  } = args;
+  const total = Number(totalAmount);
+  if (paid >= total) return [];
+
+  const todayKey = guatemalaTodayKey();
+  const dates = getDueDates(
+    startDate,
+    endDate,
+    paymentFrequency,
+    dueDay,
+    numberOfInstallments
+  );
+  if (dates.length === 0) return [];
+
+  const paidCount = getPaidInstallments(paid, total, dates.length);
+  const unpaidDates = dates.slice(paidCount);
+
+  return unpaidDates.filter((d) => utcDateKey(d) <= todayKey);
+}
+
 export function computeDebtStatus(args: {
   status: string;
   totalAmount: number | string;
