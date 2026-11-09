@@ -10,6 +10,7 @@ import {
   getNextDueDate,
   getPaidInstallments,
   calculateEndDate,
+  postponeEndDate,
 } from "@/lib/utils";
 import { PaymentFrequency } from "@prisma/client";
 import { PaymentModal } from "./PaymentModal";
@@ -65,6 +66,8 @@ export function DebtManager() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
   const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
+  const [postponeDebt, setPostponeDebt] = useState<Debt | null>(null);
+  const [postponing, setPostponing] = useState(false);
   const [form, setForm] = useState({
     name: "",
     totalAmount: "",
@@ -90,18 +93,24 @@ export function DebtManager() {
 
   const updatePreview = (draft: typeof form) => {
     let effectiveEndDate = draft.endDate;
+    const installments = draft.numberOfInstallments
+      ? parseInt(draft.numberOfInstallments, 10)
+      : undefined;
 
-    if (draft.numberOfInstallments && draft.startDate && draft.paymentFrequency) {
-      const n = parseInt(draft.numberOfInstallments, 10);
-      if (n > 0) {
-        const calculated = calculateEndDate(
-          draft.startDate,
-          draft.paymentFrequency as PaymentFrequency,
-          n,
-          draft.dueDay ? parseInt(draft.dueDay, 10) : null
-        );
-        effectiveEndDate = calculated.toISOString().split("T")[0];
-      }
+    if (
+      !effectiveEndDate &&
+      installments &&
+      installments > 0 &&
+      draft.startDate &&
+      draft.paymentFrequency
+    ) {
+      const calculated = calculateEndDate(
+        draft.startDate,
+        draft.paymentFrequency as PaymentFrequency,
+        installments,
+        draft.dueDay ? parseInt(draft.dueDay, 10) : null
+      );
+      effectiveEndDate = calculated.toISOString().split("T")[0];
     }
 
     if (draft.startDate && effectiveEndDate) {
@@ -109,7 +118,8 @@ export function DebtManager() {
         draft.startDate,
         effectiveEndDate,
         draft.paymentFrequency as PaymentFrequency,
-        draft.dueDay ? parseInt(draft.dueDay, 10) : undefined
+        draft.dueDay ? parseInt(draft.dueDay, 10) : undefined,
+        installments
       );
       setPreviewDates(dates);
     } else {
@@ -118,6 +128,9 @@ export function DebtManager() {
   };
 
   const getEffectiveEndDate = () => {
+    if (form.endDate) {
+      return form.endDate;
+    }
     if (form.numberOfInstallments && form.startDate && form.paymentFrequency) {
       const n = parseInt(form.numberOfInstallments, 10);
       if (n > 0) {
@@ -138,7 +151,10 @@ export function DebtManager() {
     const draft = { ...form, [key]: value };
 
     if (
-      (key === "numberOfInstallments" || key === "startDate" || key === "paymentFrequency") &&
+      (key === "numberOfInstallments" ||
+        key === "startDate" ||
+        key === "paymentFrequency" ||
+        key === "dueDay") &&
       draft.numberOfInstallments &&
       draft.startDate &&
       draft.paymentFrequency
@@ -222,6 +238,24 @@ export function DebtManager() {
     if (res.ok) fetchDebts();
   };
 
+  const handlePostpone = async () => {
+    if (!postponeDebt) return;
+    setPostponing(true);
+    const res = await fetch(`/api/debts/${postponeDebt.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ months: 1 }),
+    });
+    setPostponing(false);
+
+    if (res.ok) {
+      setPostponeDebt(null);
+      fetchDebts();
+    } else {
+      alert("Error al aplazar el pago");
+    }
+  };
+
   const getBalance = (debt: Debt) => {
     const paid = debt.payments.reduce(
       (sum, p) => sum + parseFloat(p.amount),
@@ -235,7 +269,8 @@ export function DebtManager() {
       debt.startDate,
       debt.endDate,
       debt.paymentFrequency,
-      debt.dueDay ?? undefined
+      debt.dueDay ?? undefined,
+      debt.numberOfInstallments
     );
     return `${dates.length} cuota${dates.length !== 1 ? "s" : ""}`;
   };
@@ -246,7 +281,8 @@ export function DebtManager() {
       debt.startDate,
       debt.endDate,
       debt.paymentFrequency,
-      debt.dueDay ?? undefined
+      debt.dueDay ?? undefined,
+      debt.numberOfInstallments
     );
   };
 
@@ -259,7 +295,8 @@ export function DebtManager() {
       debt.startDate,
       debt.endDate,
       debt.paymentFrequency,
-      debt.dueDay ?? undefined
+      debt.dueDay ?? undefined,
+      debt.numberOfInstallments
     );
     const paidInstallments = getPaidInstallments(
       paid,
@@ -271,8 +308,62 @@ export function DebtManager() {
       debt.endDate,
       debt.paymentFrequency,
       debt.dueDay ?? undefined,
-      paidInstallments
+      paidInstallments,
+      debt.numberOfInstallments
     );
+  };
+
+  const getPostponePreview = (debt: Debt) => {
+    const paid = debt.payments.reduce(
+      (sum, p) => sum + parseFloat(p.amount),
+      0
+    );
+    const currentDates = getDueDates(
+      debt.startDate,
+      debt.endDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      debt.numberOfInstallments
+    );
+    const installmentsCount =
+      debt.numberOfInstallments && debt.numberOfInstallments > 0
+        ? debt.numberOfInstallments
+        : currentDates.length;
+    const paidInstallments = getPaidInstallments(
+      paid,
+      debt.totalAmount,
+      currentDates.length
+    );
+    const newEndDate = postponeEndDate(
+      debt.startDate,
+      debt.endDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      1
+    );
+    const newDates = getDueDates(
+      debt.startDate,
+      newEndDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      installmentsCount
+    );
+    const newPendingDates = newDates.slice(paidInstallments);
+    const newNextDue = getNextDueDate(
+      debt.startDate,
+      newEndDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      paidInstallments,
+      installmentsCount
+    );
+    return {
+      currentNextDue: getNextDue(debt),
+      newNextDue,
+      newEndDate,
+      newPendingDates,
+      installmentAmount: getInstallment(debt),
+    };
   };
 
   if (loading) return <p className="text-zinc-600 dark:text-zinc-400">Cargando...</p>;
@@ -407,7 +498,10 @@ export function DebtManager() {
                         form.startDate,
                         getEffectiveEndDate(),
                         form.paymentFrequency as PaymentFrequency,
-                        form.dueDay ? parseInt(form.dueDay, 10) : undefined
+                        form.dueDay ? parseInt(form.dueDay, 10) : undefined,
+                        form.numberOfInstallments
+                          ? parseInt(form.numberOfInstallments, 10)
+                          : undefined
                       )
                     )}
                   </span>{" "}
@@ -532,6 +626,14 @@ export function DebtManager() {
                       >
                         Pago
                       </button>
+                      {debt.status !== "PAID" && (
+                        <button
+                          onClick={() => setPostponeDebt(debt)}
+                          className="rounded-md bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
+                        >
+                          Aplazar 1 mes
+                        </button>
+                      )}
                       <button
                         onClick={() => startEdit(debt)}
                         className="rounded-md bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
@@ -630,6 +732,14 @@ export function DebtManager() {
                 >
                   Registrar pago
                 </button>
+                {debt.status !== "PAID" && (
+                  <button
+                    onClick={() => setPostponeDebt(debt)}
+                    className="flex-1 rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:hover:bg-amber-900"
+                  >
+                    Aplazar 1 mes
+                  </button>
+                )}
                 <button
                   onClick={() => startEdit(debt)}
                   className="flex-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900"
@@ -656,6 +766,88 @@ export function DebtManager() {
           onSaved={fetchDebts}
         />
       )}
+
+      {postponeDebt && (() => {
+        const preview = getPostponePreview(postponeDebt);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+                Aplazar pago por 1 mes
+              </h3>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                {postponeDebt.name} · Saldo pendiente:{" "}
+                {formatCurrency(getBalance(postponeDebt))}
+              </p>
+
+              <div className="mt-4 space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                {preview.currentNextDue && preview.newNextDue && (
+                  <div>
+                    <p className="text-xs font-medium uppercase text-amber-800 dark:text-amber-300">
+                      Próximo pago
+                    </p>
+                    <p className="mt-0.5 font-semibold text-amber-950 dark:text-amber-100">
+                      {formatDate(preview.currentNextDue)} →{" "}
+                      {formatDate(preview.newNextDue)}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-medium uppercase text-amber-800 dark:text-amber-300">
+                    Nueva fecha final
+                  </p>
+                  <p className="mt-0.5 font-semibold text-amber-950 dark:text-amber-100">
+                    {formatDate(postponeDebt.endDate)} →{" "}
+                    {formatDate(preview.newEndDate)}
+                  </p>
+                </div>
+                {preview.newPendingDates.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium uppercase text-amber-800 dark:text-amber-300">
+                      Nuevos plazos pendientes ({preview.newPendingDates.length}{" "}
+                      de {formatCurrency(preview.installmentAmount)})
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {preview.newPendingDates.slice(0, 6).map((d, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-amber-900 shadow-sm dark:bg-zinc-800 dark:text-amber-200"
+                        >
+                          {formatDate(d)}
+                        </span>
+                      ))}
+                      {preview.newPendingDates.length > 6 && (
+                        <span className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-amber-900 shadow-sm dark:bg-zinc-800 dark:text-amber-200">
+                          +{preview.newPendingDates.length - 6} más
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPostponeDebt(null)}
+                  disabled={postponing}
+                  className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePostpone}
+                  disabled={postponing}
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-500 disabled:opacity-50"
+                >
+                  {postponing ? "Aplazando..." : "Confirmar prórroga"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

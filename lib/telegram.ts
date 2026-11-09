@@ -100,7 +100,8 @@ export function startTelegramPolling() {
           debt.startDate,
           debt.endDate,
           debt.paymentFrequency,
-          debt.dueDay
+          debt.dueDay,
+          debt.numberOfInstallments
         );
         const amount = Math.min(installment, Math.max(balance, 0));
 
@@ -196,7 +197,8 @@ export function startTelegramPolling() {
           debt.startDate,
           debt.endDate,
           debt.paymentFrequency,
-          debt.dueDay
+          debt.dueDay,
+          debt.numberOfInstallments
         );
         const amount = Math.min(installment, Math.max(balance, 0));
 

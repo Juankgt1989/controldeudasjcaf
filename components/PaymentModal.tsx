@@ -13,6 +13,7 @@ interface PaymentModalProps {
     endDate: string;
     paymentFrequency: PaymentFrequency;
     dueDay: number | null;
+    numberOfInstallments?: number | null;
     payments: { amount: string }[];
   };
   suggestedAmount?: number;
@@ -37,7 +38,8 @@ export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: Paymen
     debt.startDate,
     debt.endDate,
     debt.paymentFrequency,
-    debt.dueDay ?? undefined
+    debt.dueDay ?? undefined,
+    debt.numberOfInstallments
   );
   const installment =
     dueDates.length > 0 ? parseFloat(debt.totalAmount) / dueDates.length : 0;

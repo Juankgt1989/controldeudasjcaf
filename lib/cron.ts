@@ -79,7 +79,8 @@ async function sendWeeklySummary() {
         debt.startDate,
         debt.endDate,
         debt.paymentFrequency as PaymentFrequency,
-        debt.dueDay ?? undefined
+        debt.dueDay ?? undefined,
+        debt.numberOfInstallments
       );
       if (dueDates.length === 0) continue;
 
@@ -185,7 +186,8 @@ export function startReminderCron() {
           debt.startDate,
           debt.endDate,
           debt.paymentFrequency as PaymentFrequency,
-          debt.dueDay ?? undefined
+          debt.dueDay ?? undefined,
+          debt.numberOfInstallments
         );
 
         if (dueDates.length === 0) continue;

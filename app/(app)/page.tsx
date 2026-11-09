@@ -40,7 +40,8 @@ export default async function DashboardPage() {
         d.startDate,
         d.endDate,
         d.paymentFrequency,
-        d.dueDay ?? undefined
+        d.dueDay ?? undefined,
+        d.numberOfInstallments
       ),
     }))
     .filter((d) => d.overdue && d.status !== "PAID");

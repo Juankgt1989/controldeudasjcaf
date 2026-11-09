@@ -3,7 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentFrequency, DebtStatus } from "@prisma/client";
-import { calculateEndDate } from "@/lib/utils";
+import {
+  calculateEndDate,
+  getDueDates,
+  getPaidInstallments,
+  postponeEndDate,
+} from "@/lib/utils";
 
 export async function PUT(
   req: NextRequest,
@@ -54,7 +59,9 @@ export async function PUT(
         : undefined;
 
     let calculatedEndDate: Date | undefined;
-    if (installments && installments > 0) {
+    if (endDate) {
+      calculatedEndDate = new Date(endDate);
+    } else if (installments && installments > 0) {
       const freq = paymentFrequency || undefined;
       if (freq) {
         calculatedEndDate = calculateEndDate(
@@ -64,8 +71,6 @@ export async function PUT(
           dueDay ? parseInt(dueDay, 10) : null
         );
       }
-    } else if (endDate !== undefined) {
-      calculatedEndDate = endDate ? new Date(endDate) : undefined;
     }
 
     const debt = await prisma.debt.update({
@@ -92,6 +97,95 @@ export async function PUT(
     console.error(error);
     return NextResponse.json(
       { error: "Failed to update debt" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id } = await params;
+    const body = await req.json().catch(() => ({}));
+    const months =
+      typeof body.months === "number" && body.months > 0
+        ? Math.floor(body.months)
+        : 1;
+
+    const existing = await prisma.debt.findUnique({
+      where: { id },
+      include: { payments: { select: { amount: true } } },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Debt not found" }, { status: 404 });
+    }
+
+    const currentDates = getDueDates(
+      existing.startDate,
+      existing.endDate,
+      existing.paymentFrequency,
+      existing.dueDay,
+      existing.numberOfInstallments
+    );
+
+    const installmentsCount =
+      existing.numberOfInstallments && existing.numberOfInstallments > 0
+        ? existing.numberOfInstallments
+        : currentDates.length;
+
+    const paid = existing.payments.reduce(
+      (sum, p) => sum + Number(p.amount),
+      0
+    );
+    const paidInstallments = getPaidInstallments(
+      paid,
+      Number(existing.totalAmount),
+      currentDates.length
+    );
+    const firstUnpaidDate = currentDates[paidInstallments];
+
+    const newEndDate = postponeEndDate(
+      existing.startDate,
+      existing.endDate,
+      existing.paymentFrequency,
+      existing.dueDay,
+      months
+    );
+
+    const debt = await prisma.debt.update({
+      where: { id },
+      data: {
+        endDate: newEndDate,
+        numberOfInstallments:
+          installmentsCount > 0
+            ? installmentsCount
+            : existing.numberOfInstallments,
+      },
+    });
+
+    if (firstUnpaidDate) {
+      await prisma.installmentNotification.deleteMany({
+        where: {
+          debtId: id,
+          dueDate: { gte: firstUnpaidDate },
+        },
+      });
+    }
+
+    return NextResponse.json(debt);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { error: "Failed to postpone debt" },
       { status: 500 }
     );
   }

@@ -91,11 +91,28 @@ export function calculateEndDate(
   return end;
 }
 
+export function postponeEndDate(
+  startDate: Date | string,
+  endDate: Date | string,
+  frequency: PaymentFrequency,
+  dueDay?: number | null,
+  months: number = 1
+): Date {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const anchorDay =
+    frequency === "MONTHLY"
+      ? (dueDay ?? start.getUTCDate())
+      : end.getUTCDate();
+  return addMonthsClamped(end, months, anchorDay);
+}
+
 export function getDueDates(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  numberOfInstallments?: number | null
 ): Date[] {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -108,13 +125,43 @@ export function getDueDates(
       dates.push(new Date(current));
       current = addMonthsClamped(current, 1, anchorDay);
     }
+    if (
+      numberOfInstallments &&
+      numberOfInstallments > 0 &&
+      dates.length > numberOfInstallments
+    ) {
+      return dates.slice(-numberOfInstallments);
+    }
   } else {
     const days = frequency === "WEEKLY" ? 7 : 15;
+    if (numberOfInstallments && numberOfInstallments > 0) {
+      const standardEnd = calculateEndDate(
+        start,
+        frequency,
+        numberOfInstallments,
+        dueDay
+      );
+      if (end > standardEnd) {
+        for (let i = numberOfInstallments - 1; i >= 0; i--) {
+          const d = new Date(end);
+          d.setUTCDate(d.getUTCDate() - i * days);
+          dates.push(d);
+        }
+        return dates;
+      }
+    }
     const current = new Date(start);
     current.setUTCDate(current.getUTCDate() + days);
     while (current <= end) {
       dates.push(new Date(current));
       current.setUTCDate(current.getUTCDate() + days);
+    }
+    if (
+      numberOfInstallments &&
+      numberOfInstallments > 0 &&
+      dates.length > numberOfInstallments
+    ) {
+      return dates.slice(-numberOfInstallments);
     }
   }
 
@@ -126,9 +173,16 @@ export function getInstallmentAmount(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  numberOfInstallments?: number | null
 ): number {
-  const dates = getDueDates(startDate, endDate, frequency, dueDay);
+  const dates = getDueDates(
+    startDate,
+    endDate,
+    frequency,
+    dueDay,
+    numberOfInstallments
+  );
   if (dates.length === 0) return 0;
   const total =
     typeof totalAmount === "string" ? parseFloat(totalAmount) : Number(totalAmount);
@@ -152,10 +206,17 @@ export function getCurrentDueDate(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  numberOfInstallments?: number | null
 ): Date | null {
   const today = new Date();
-  const dates = getDueDates(startDate, endDate, frequency, dueDay);
+  const dates = getDueDates(
+    startDate,
+    endDate,
+    frequency,
+    dueDay,
+    numberOfInstallments
+  );
 
   if (dates.length === 0) return null;
 
@@ -175,10 +236,17 @@ export function getNextDueDate(
   endDate: Date | string,
   frequency: PaymentFrequency,
   dueDay?: number | null,
-  paidInstallments: number = 0
+  paidInstallments: number = 0,
+  numberOfInstallments?: number | null
 ): Date | null {
   const today = new Date();
-  const dates = getDueDates(startDate, endDate, frequency, dueDay);
+  const dates = getDueDates(
+    startDate,
+    endDate,
+    frequency,
+    dueDay,
+    numberOfInstallments
+  );
   const remaining = dates.slice(paidInstallments);
 
   for (const date of remaining) {
@@ -194,10 +262,17 @@ export function isOverdue(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  numberOfInstallments?: number | null
 ): boolean {
   const today = new Date();
-  const currentDue = getCurrentDueDate(startDate, endDate, frequency, dueDay);
+  const currentDue = getCurrentDueDate(
+    startDate,
+    endDate,
+    frequency,
+    dueDay,
+    numberOfInstallments
+  );
 
   if (!currentDue) return today > new Date(endDate);
 
@@ -208,10 +283,17 @@ export function daysOverdue(
   startDate: Date | string,
   endDate: Date | string,
   frequency: PaymentFrequency,
-  dueDay?: number | null
+  dueDay?: number | null,
+  numberOfInstallments?: number | null
 ): number {
   const today = new Date();
-  const currentDue = getCurrentDueDate(startDate, endDate, frequency, dueDay);
+  const currentDue = getCurrentDueDate(
+    startDate,
+    endDate,
+    frequency,
+    dueDay,
+    numberOfInstallments
+  );
 
   if (!currentDue) {
     const diff = today.getTime() - new Date(endDate).getTime();
@@ -242,6 +324,7 @@ export function computeDebtStatus(args: {
   endDate: Date | string;
   paymentFrequency: PaymentFrequency;
   dueDay?: number | null;
+  numberOfInstallments?: number | null;
   paid: number;
 }): string {
   const {
@@ -251,6 +334,7 @@ export function computeDebtStatus(args: {
     endDate,
     paymentFrequency,
     dueDay,
+    numberOfInstallments,
     paid,
   } = args;
   const total = Number(totalAmount);
@@ -258,7 +342,13 @@ export function computeDebtStatus(args: {
   if (status === "PAID" || paid >= total) return "PAID";
 
   const todayKey = guatemalaTodayKey();
-  const dates = getDueDates(startDate, endDate, paymentFrequency, dueDay);
+  const dates = getDueDates(
+    startDate,
+    endDate,
+    paymentFrequency,
+    dueDay,
+    numberOfInstallments
+  );
 
   if (dates.length === 0) {
     return utcDateKey(endDate) < todayKey ? "PENDING" : "ACTIVE";
@@ -275,7 +365,8 @@ export function computeDebtStatus(args: {
     startDate,
     endDate,
     paymentFrequency,
-    dueDay
+    dueDay,
+    numberOfInstallments
   );
   const expected = installment * passedDates.length;
 

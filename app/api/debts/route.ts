@@ -34,6 +34,7 @@ export async function GET() {
           endDate: debt.endDate,
           paymentFrequency: debt.paymentFrequency,
           dueDay: debt.dueDay,
+          numberOfInstallments: debt.numberOfInstallments,
           paid,
         }),
       };
