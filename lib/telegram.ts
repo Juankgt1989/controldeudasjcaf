@@ -6,6 +6,10 @@ import {
   formatDate,
   escapeTelegramMarkdown,
 } from "@/lib/utils";
+import {
+  TELEGRAM_BOT_COMMANDS,
+  createTelegramCommandHandler,
+} from "@/lib/telegram-commands";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -17,11 +21,109 @@ export function startTelegramPolling() {
   if (!bot || globalForPolling.pollingStarted) return;
   globalForPolling.pollingStarted = true;
 
-  bot.on("callback_query", async (query) => {
+  const activeBot = bot;
+
+  activeBot.setMyCommands(TELEGRAM_BOT_COMMANDS).catch((error) => {
+    console.error("Failed to register Telegram bot commands:", error);
+  });
+
+  const commandHandler = createTelegramCommandHandler({
+    isAuthorizedChat: async (chatId) => {
+      const authorizedUser = await prisma.user.findFirst({
+        where: { telegramChatId: chatId },
+        select: { id: true },
+      });
+      return Boolean(authorizedUser);
+    },
+    getUnpaidDebts: async () =>
+      prisma.debt.findMany({
+        where: { status: { not: "PAID" } },
+        include: { payments: { select: { amount: true } } },
+        orderBy: { name: "asc" },
+      }),
+    getDebtById: async (debtId) =>
+      prisma.debt.findUnique({
+        where: { id: debtId },
+        include: { payments: { select: { amount: true } } },
+      }),
+    recordPayment: async ({ debtId, amount, paymentDate, notes, markPaid }) => {
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.create({
+          data: {
+            debtId,
+            amount,
+            paymentDate,
+            notes,
+          },
+        });
+
+        if (markPaid) {
+          await tx.debt.update({
+            where: { id: debtId },
+            data: { status: "PAID" },
+          });
+        }
+      });
+    },
+    sendMessage: async (chatId, text, buttons) => {
+      await activeBot.sendMessage(chatId, text, {
+        parse_mode: "Markdown",
+        ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+      });
+    },
+    editMessage: async (chatId, messageId, text, buttons) => {
+      await activeBot
+        .editMessageText(text, {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: "Markdown",
+          ...(buttons ? { reply_markup: { inline_keyboard: buttons } } : {}),
+        })
+        .catch(() => {});
+    },
+    answerCallback: async (queryId, text) => {
+      await activeBot
+        .answerCallbackQuery(queryId, text ? { text } : undefined)
+        .catch(() => {});
+    },
+  });
+
+  activeBot.on("message", async (msg) => {
+    if (!msg.text || !msg.chat) return;
+    const chatId = msg.chat.id.toString();
+
+    try {
+      await commandHandler.handleMessage(chatId, msg.text);
+    } catch (error) {
+      console.error("Error handling Telegram message:", error);
+      activeBot
+        .sendMessage(chatId, "⚠️ Ocurrió un error al procesar tu solicitud.")
+        .catch(() => {});
+    }
+  });
+
+  activeBot.on("callback_query", async (query) => {
     if (!query.data || !query.message) return;
 
     const data = query.data;
     const chatId = query.message.chat.id.toString();
+
+    if (data.startsWith("cmdpay_")) {
+      try {
+        await commandHandler.handleCallback(
+          query.id,
+          chatId,
+          query.message.message_id,
+          data
+        );
+      } catch (error) {
+        console.error("Error handling Telegram command callback:", error);
+        activeBot
+          .answerCallbackQuery(query.id, { text: "Error al procesar la acción" })
+          .catch(() => {});
+      }
+      return;
+    }
 
     const authorizedUser = await prisma.user.findFirst({
       where: { telegramChatId: chatId },

@@ -48,6 +48,48 @@ export default async function SettingsPage() {
           </li>
         </ol>
       </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+          Comandos disponibles en Telegram
+        </h3>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Una vez configurado tu Chat ID, puedes consultar y registrar pagos
+          directamente desde el chat con tu bot:
+        </p>
+        <ul className="mt-3 space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <li>
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+              /resumen
+            </code>{" "}
+            — Resumen de todas tus deudas pendientes y saldo total.
+          </li>
+          <li>
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+              /vencidas
+            </code>{" "}
+            — Cuotas vencidas, días de retraso y monto atrasado.
+          </li>
+          <li>
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+              /mes
+            </code>{" "}
+            — Cuotas pendientes que vencen durante el mes actual.
+          </li>
+          <li>
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+              /pagar
+            </code>{" "}
+            — Registrar un pago de cuota o un monto personalizado.
+          </li>
+          <li>
+            <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800">
+              /ayuda
+            </code>{" "}
+            — Mostrar la lista de comandos en el chat.
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
