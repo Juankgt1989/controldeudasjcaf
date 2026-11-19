@@ -62,7 +62,15 @@ export async function POST(req: NextRequest) {
       status,
     } = body;
 
-    if (!name || !totalAmount || !startDate || !paymentFrequency) {
+    const trimmedName = typeof name === "string" ? name.trim() : "";
+    if (!trimmedName || trimmedName.length > 200) {
+      return NextResponse.json(
+        { error: "Name must be between 1 and 200 characters" },
+        { status: 400 }
+      );
+    }
+
+    if (!totalAmount || !startDate || !paymentFrequency) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -144,7 +152,7 @@ export async function POST(req: NextRequest) {
 
     const debt = await prisma.debt.create({
       data: {
-        name: String(name).trim(),
+        name: trimmedName,
         totalAmount: parsedTotal,
         startDate: parsedStart,
         endDate: calculatedEndDate,

@@ -226,22 +226,25 @@ export function getCurrentDueDate(
   endDate: Date | string,
   frequency: PaymentFrequency,
   dueDay?: number | null,
-  numberOfInstallments?: number | null
+  numberOfInstallments?: number | null,
+  precomputedDates?: Date[]
 ): Date | null {
-  const today = new Date();
-  const dates = getDueDates(
-    startDate,
-    endDate,
-    frequency,
-    dueDay,
-    numberOfInstallments
-  );
+  const todayKey = guatemalaTodayKey();
+  const dates =
+    precomputedDates ??
+    getDueDates(
+      startDate,
+      endDate,
+      frequency,
+      dueDay,
+      numberOfInstallments
+    );
 
   if (dates.length === 0) return null;
 
-  // Find the first due date that is today or in the future
+  // Find the first due date that is today or in the future (Guatemala calendar)
   for (const date of dates) {
-    if (date >= today) {
+    if (utcDateKey(date) >= todayKey) {
       return date;
     }
   }
@@ -256,20 +259,23 @@ export function getNextDueDate(
   frequency: PaymentFrequency,
   dueDay?: number | null,
   paidInstallments: number = 0,
-  numberOfInstallments?: number | null
+  numberOfInstallments?: number | null,
+  precomputedDates?: Date[]
 ): Date | null {
-  const today = new Date();
-  const dates = getDueDates(
-    startDate,
-    endDate,
-    frequency,
-    dueDay,
-    numberOfInstallments
-  );
+  const todayKey = guatemalaTodayKey();
+  const dates =
+    precomputedDates ??
+    getDueDates(
+      startDate,
+      endDate,
+      frequency,
+      dueDay,
+      numberOfInstallments
+    );
   const remaining = dates.slice(paidInstallments);
 
   for (const date of remaining) {
-    if (date > today) {
+    if (utcDateKey(date) >= todayKey) {
       return date;
     }
   }
@@ -336,6 +342,22 @@ function guatemalaTodayKey(): string {
   return gtDateFormatter.format(new Date());
 }
 
+export function getGuatemalaTodayISO(): string {
+  return guatemalaTodayKey();
+}
+
+export function daysUntilGuatemalaDate(date: Date | string): number {
+  const [y, m, d] = guatemalaTodayKey().split("-").map(Number);
+  const todayMs = Date.UTC(y, m - 1, d);
+  const target = new Date(date);
+  const targetMs = Date.UTC(
+    target.getUTCFullYear(),
+    target.getUTCMonth(),
+    target.getUTCDate()
+  );
+  return Math.round((targetMs - todayMs) / (1000 * 60 * 60 * 24));
+}
+
 export function getOverdueInstallments(args: {
   totalAmount: number | string;
   startDate: Date | string;
@@ -344,6 +366,7 @@ export function getOverdueInstallments(args: {
   dueDay?: number | null;
   numberOfInstallments?: number | null;
   paid: number;
+  precomputedDates?: Date[];
 }): Date[] {
   const {
     totalAmount,
@@ -353,18 +376,21 @@ export function getOverdueInstallments(args: {
     dueDay,
     numberOfInstallments,
     paid,
+    precomputedDates,
   } = args;
   const total = Number(totalAmount);
   if (paid >= total) return [];
 
   const todayKey = guatemalaTodayKey();
-  const dates = getDueDates(
-    startDate,
-    endDate,
-    paymentFrequency,
-    dueDay,
-    numberOfInstallments
-  );
+  const dates =
+    precomputedDates ??
+    getDueDates(
+      startDate,
+      endDate,
+      paymentFrequency,
+      dueDay,
+      numberOfInstallments
+    );
   if (dates.length === 0) return [];
 
   const paidCount = getPaidInstallments(paid, total, dates.length);

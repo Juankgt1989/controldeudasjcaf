@@ -21,7 +21,7 @@ interface Payment {
   amount: string;
 }
 
-interface Debt {
+export interface DebtItem {
   id: string;
   name: string;
   totalAmount: string;
@@ -33,6 +33,8 @@ interface Debt {
   status: string;
   payments: Payment[];
 }
+
+type Debt = DebtItem;
 
 const frequencyOptions = [
   { value: "WEEKLY", label: "Semanal" },
@@ -62,14 +64,25 @@ const inputClass =
 const labelClass =
   "block text-sm font-medium text-zinc-900 dark:text-zinc-100";
 
-export function DebtManager() {
-  const [debts, setDebts] = useState<Debt[]>([]);
-  const [loading, setLoading] = useState(true);
+export function DebtManager({
+  initialDebts,
+}: {
+  initialDebts?: DebtItem[];
+} = {}) {
+  const [debts, setDebts] = useState<Debt[]>(initialDebts ?? []);
+  const [loading, setLoading] = useState(!initialDebts);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Debt | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
   const [postponeDebt, setPostponeDebt] = useState<Debt | null>(null);
   const [postponing, setPostponing] = useState(false);
+  const [deleteDebt, setDeleteDebt] = useState<Debt | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "OVERDUE" | "ACTIVE" | "PAID"
@@ -85,6 +98,26 @@ export function DebtManager() {
   });
   const [previewDates, setPreviewDates] = useState<Date[]>([]);
 
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (postponeDebt && !postponing) setPostponeDebt(null);
+      if (deleteDebt && !deleting) setDeleteDebt(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [postponeDebt, postponing, deleteDebt, deleting]);
+
   const fetchDebts = async () => {
     try {
       const res = await fetch("/api/debts");
@@ -98,9 +131,9 @@ export function DebtManager() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (initialDebts) return;
     fetchDebts();
-  }, []);
+  }, [initialDebts]);
 
   const updatePreview = (draft: typeof form) => {
     let effectiveEndDate = draft.endDate;
@@ -219,6 +252,7 @@ export function DebtManager() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
 
     const effectiveEndDate = getEffectiveEndDate();
     const payload = {
@@ -229,41 +263,76 @@ export function DebtManager() {
     const url = editing ? `/api/debts/${editing.id}` : "/api/debts";
     const method = editing ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      resetForm();
-      fetchDebts();
-    } else {
-      alert("Error al guardar la deuda");
+      if (res.ok) {
+        const wasEditing = !!editing;
+        resetForm();
+        await fetchDebts();
+        showToast(
+          "success",
+          wasEditing ? "Deuda actualizada correctamente" : "Deuda creada correctamente"
+        );
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.error || "Error al guardar la deuda");
+      }
+    } catch {
+      showToast("error", "Error de conexión al guardar la deuda");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("¿Eliminar esta deuda y todos sus pagos?")) return;
-    const res = await fetch(`/api/debts/${id}`, { method: "DELETE" });
-    if (res.ok) fetchDebts();
+  const confirmDelete = async () => {
+    if (!deleteDebt) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/debts/${deleteDebt.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setDeleteDebt(null);
+        await fetchDebts();
+        showToast("success", "Deuda eliminada correctamente");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.error || "Error al eliminar la deuda");
+      }
+    } catch {
+      showToast("error", "Error de conexión al eliminar la deuda");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handlePostpone = async () => {
     if (!postponeDebt) return;
     setPostponing(true);
-    const res = await fetch(`/api/debts/${postponeDebt.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ months: 1 }),
-    });
-    setPostponing(false);
+    try {
+      const res = await fetch(`/api/debts/${postponeDebt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ months: 1 }),
+      });
 
-    if (res.ok) {
-      setPostponeDebt(null);
-      fetchDebts();
-    } else {
-      alert("Error al aplazar el pago");
+      if (res.ok) {
+        setPostponeDebt(null);
+        await fetchDebts();
+        showToast("success", "Pago aplazado por 1 mes");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast("error", data.error || "Error al aplazar el pago");
+      }
+    } catch {
+      showToast("error", "Error de conexión al aplazar el pago");
+    } finally {
+      setPostponing(false);
     }
   };
 
@@ -397,7 +466,8 @@ export function DebtManager() {
           debt.paymentFrequency,
           debt.dueDay ?? undefined,
           paidInstallments,
-          debt.numberOfInstallments
+          debt.numberOfInstallments,
+          dates
         );
         const overdueDates =
           debt.status === "PAID" || balance <= 0
@@ -410,6 +480,7 @@ export function DebtManager() {
                 dueDay: debt.dueDay,
                 numberOfInstallments: debt.numberOfInstallments,
                 paid,
+                precomputedDates: dates,
               });
         const overdueAmount = Math.min(
           overdueDates.length * installment,
@@ -479,6 +550,26 @@ export function DebtManager() {
 
   return (
     <div className="space-y-6">
+      {toast && (
+        <div
+          role="status"
+          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium shadow-sm ${
+            toast.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/60 dark:text-green-300"
+              : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300"
+          }`}
+        >
+          <span>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="ml-4 text-xs opacity-70 hover:opacity-100"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-1.5">
           {(
@@ -676,9 +767,14 @@ export function DebtManager() {
 
           <button
             type="submit"
-            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
+            disabled={submitting}
+            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
           >
-            {editing ? "Guardar cambios" : "Guardar deuda"}
+            {submitting
+              ? "Guardando..."
+              : editing
+                ? "Guardar cambios"
+                : "Guardar deuda"}
           </button>
         </form>
       )}
@@ -812,12 +908,14 @@ export function DebtManager() {
                     </td>
                     <td className="px-3 py-3 text-right">
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        <button
-                          onClick={() => setPaymentDebt(debt)}
-                          className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
-                        >
-                          Pago
-                        </button>
+                        {debt.status !== "PAID" && (
+                          <button
+                            onClick={() => setPaymentDebt(debt)}
+                            className="rounded-md bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                          >
+                            Pago
+                          </button>
+                        )}
                         {debt.status !== "PAID" && (
                           <button
                             onClick={() => setPostponeDebt(debt)}
@@ -834,7 +932,7 @@ export function DebtManager() {
                           Editar
                         </button>
                         <button
-                          onClick={() => handleDelete(debt.id)}
+                          onClick={() => setDeleteDebt(debt)}
                           className="rounded-md bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
                         >
                           Eliminar
@@ -967,12 +1065,14 @@ export function DebtManager() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-                  <button
-                    onClick={() => setPaymentDebt(debt)}
-                    className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
-                  >
-                    Registrar pago
-                  </button>
+                  {debt.status !== "PAID" && (
+                    <button
+                      onClick={() => setPaymentDebt(debt)}
+                      className="flex-1 rounded-lg bg-green-50 px-3 py-2 text-sm font-semibold text-green-600 transition-colors hover:bg-green-100 dark:bg-green-950 dark:text-green-400 dark:hover:bg-green-900"
+                    >
+                      Registrar pago
+                    </button>
+                  )}
                   {debt.status !== "PAID" && (
                     <button
                       onClick={() => setPostponeDebt(debt)}
@@ -988,7 +1088,7 @@ export function DebtManager() {
                     Editar
                   </button>
                   <button
-                    onClick={() => handleDelete(debt.id)}
+                    onClick={() => setDeleteDebt(debt)}
                     className="rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900"
                   >
                     Eliminar
@@ -1005,14 +1105,63 @@ export function DebtManager() {
           debt={paymentDebt}
           suggestedAmount={getInstallment(paymentDebt)}
           onClose={() => setPaymentDebt(null)}
-          onSaved={fetchDebts}
+          onSaved={async () => {
+            await fetchDebts();
+            showToast("success", "Pago registrado correctamente");
+          }}
         />
+      )}
+
+      {deleteDebt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[1px]"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteDebt(null);
+          }}
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              Eliminar deuda
+            </h3>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              ¿Seguro que deseas eliminar{" "}
+              <strong className="text-zinc-900 dark:text-zinc-100">
+                {deleteDebt.name}
+              </strong>{" "}
+              y todos sus pagos registrados? Esta acción no se puede deshacer.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteDebt(null)}
+                disabled={deleting}
+                className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+              >
+                {deleting ? "Eliminando..." : "Eliminar deuda"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {postponeDebt && (() => {
         const preview = getPostponePreview(postponeDebt);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[1px]"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !postponing)
+                setPostponeDebt(null);
+            }}
+          >
             <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
               <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
                 Aplazar pago por 1 mes

@@ -8,7 +8,7 @@ interface Debt {
   name: string;
 }
 
-interface Payment {
+export interface PaymentItem {
   id: string;
   amount: string;
   paymentDate: string;
@@ -17,27 +17,35 @@ interface Payment {
   debt: Debt;
 }
 
-export function PaymentsManager() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [loading, setLoading] = useState(true);
+export function PaymentsManager({
+  initialPayments,
+}: {
+  initialPayments?: PaymentItem[];
+}) {
+  const [payments, setPayments] = useState<PaymentItem[]>(
+    initialPayments ?? []
+  );
+  const [loading, setLoading] = useState(!initialPayments);
   const [filterDebt, setFilterDebt] = useState("ALL");
 
-  const fetchPayments = async () => {
-    try {
-      const res = await fetch("/api/payments");
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setPayments(data);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPayments();
-  }, []);
+    if (initialPayments) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/payments");
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          if (Array.isArray(data)) setPayments(data);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialPayments]);
 
   const debtNames = useMemo(
     () => Array.from(new Set(payments.map((p) => p.debt.name))).sort(),

@@ -28,6 +28,8 @@ model User {
   telegramChatId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([telegramChatId])
 }
 
 model Debt {
@@ -45,6 +47,9 @@ model Debt {
 
   payments                   Payment[]
   installmentNotifications   InstallmentNotification[]
+
+  @@index([status])
+  @@index([createdAt])
 }
 
 model Payment {
@@ -57,6 +62,9 @@ model Payment {
   updatedAt   DateTime @updatedAt
 
   debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId])
+  @@index([paymentDate])
 }
 
 model InstallmentNotification {

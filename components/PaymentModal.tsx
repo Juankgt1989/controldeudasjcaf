@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { formatCurrency, formatDate, getDueDates } from "@/lib/utils";
+import { useState, useMemo, useEffect } from "react";
+import {
+  formatCurrency,
+  formatDate,
+  getDueDates,
+  getGuatemalaTodayISO,
+} from "@/lib/utils";
 import type { PaymentFrequency } from "@prisma/client";
 
 interface PaymentModalProps {
@@ -29,65 +34,109 @@ const labelClass =
 
 const MAX_LISTED = 6;
 
-export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: PaymentModalProps) {
-  const paid = debt.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-  const balance = parseFloat(debt.totalAmount) - paid;
-  const positiveBalance = Math.max(balance, 0);
+export function PaymentModal({
+  debt,
+  suggestedAmount,
+  onClose,
+  onSaved,
+}: PaymentModalProps) {
+  const {
+    balance,
+    positiveBalance,
+    installment,
+    pendingDates,
+    pendingCount,
+    pendingSum,
+    suggestedCapped,
+    defaultAmount,
+  } = useMemo(() => {
+    const paid = debt.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+    const bal = parseFloat(debt.totalAmount) - paid;
+    const posBal = Math.max(bal, 0);
 
-  const dueDates = getDueDates(
-    debt.startDate,
-    debt.endDate,
-    debt.paymentFrequency,
-    debt.dueDay ?? undefined,
-    debt.numberOfInstallments
-  );
-  const installment =
-    dueDates.length > 0 ? parseFloat(debt.totalAmount) / dueDates.length : 0;
+    const dueDates = getDueDates(
+      debt.startDate,
+      debt.endDate,
+      debt.paymentFrequency,
+      debt.dueDay ?? undefined,
+      debt.numberOfInstallments
+    );
+    const inst =
+      dueDates.length > 0 ? parseFloat(debt.totalAmount) / dueDates.length : 0;
 
-  const pendingDates = dueDates.filter((_, i) => paid < installment * (i + 1));
-  const pendingCount = pendingDates.length;
-  const pendingSum = Math.min(installment * pendingCount, positiveBalance);
+    const pending = dueDates.filter((_, i) => paid < inst * (i + 1));
+    const count = pending.length;
+    const sum = Math.min(inst * count, posBal);
 
-  const suggested = suggestedAmount ?? 0;
-  const suggestedCapped = Math.min(suggested, positiveBalance);
-  const defaultAmount = pendingSum > 0 ? pendingSum : suggestedCapped;
+    const suggested = suggestedAmount ?? 0;
+    const capped = Math.min(suggested, posBal);
+
+    return {
+      balance: bal,
+      positiveBalance: posBal,
+      installment: inst,
+      pendingDates: pending,
+      pendingCount: count,
+      pendingSum: sum,
+      suggestedCapped: capped,
+      defaultAmount: sum > 0 ? sum : capped,
+    };
+  }, [debt, suggestedAmount]);
 
   const [amount, setAmount] = useState(
     defaultAmount > 0 ? defaultAmount.toFixed(2) : ""
   );
-  const [paymentDate, setPaymentDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [paymentDate, setPaymentDate] = useState(() => getGuatemalaTodayISO());
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !loading) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [loading, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError("");
 
-    const res = await fetch("/api/payments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        debtId: debt.id,
-        amount,
-        paymentDate,
-        notes,
-      }),
-    });
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          debtId: debt.id,
+          amount,
+          paymentDate,
+          notes,
+        }),
+      });
 
-    setLoading(false);
-
-    if (res.ok) {
-      onSaved();
-      onClose();
-    } else {
-      alert("Error al registrar el pago");
+      if (res.ok) {
+        onSaved();
+        onClose();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Error al registrar el pago");
+      }
+    } catch {
+      setError("Error de conexión al registrar el pago");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[1px]"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !loading) onClose();
+      }}
+    >
       <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
         <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
           Registrar pago
@@ -110,25 +159,31 @@ export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: Paymen
                 </li>
               ))}
               {pendingCount > MAX_LISTED && (
-                <li>y {pendingCount - MAX_LISTED} m&aacute;s...</li>
+                <li>y {pendingCount - MAX_LISTED} más...</li>
               )}
             </ul>
             {pendingCount > 1 && (
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                El monto se carg&oacute; con la suma de todas. Si pag&aacute;s
-                una sola, la dem&aacute;s seguir&aacute; pendiente y continuar&aacute;n
-                los recordatorios.
+                El monto se cargó con la suma de todas. Si pagás una sola, las
+                demás seguirán pendientes y continuarán los recordatorios.
               </p>
             )}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400">
+              {error}
+            </div>
+          )}
+
           <div>
             <label className={labelClass}>Monto (GTQ)</label>
             <input
               type="number"
               step="0.01"
+              min="0.01"
               required
               max={positiveBalance}
               value={amount}
@@ -180,6 +235,7 @@ export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: Paymen
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              maxLength={500}
               className={inputClass}
               rows={3}
             />
@@ -189,6 +245,7 @@ export function PaymentModal({ debt, suggestedAmount, onClose, onSaved }: Paymen
             <button
               type="button"
               onClick={onClose}
+              disabled={loading}
               className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
             >
               Cancelar

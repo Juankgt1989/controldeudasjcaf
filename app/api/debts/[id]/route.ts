@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PaymentFrequency, DebtStatus } from "@prisma/client";
+import { PaymentFrequency, DebtStatus, Prisma } from "@prisma/client";
 import {
   calculateEndDate,
   getDueDates,
@@ -91,9 +91,34 @@ export async function PUT(
       );
     }
 
+    let trimmedName: string | undefined;
+    if (name !== undefined) {
+      trimmedName = typeof name === "string" ? name.trim() : "";
+      if (!trimmedName || trimmedName.length > 200) {
+        return NextResponse.json(
+          { error: "Name must be between 1 and 200 characters" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const parsedStartDate = startDate ? new Date(startDate) : undefined;
+    if (parsedStartDate && Number.isNaN(parsedStartDate.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid start date" },
+        { status: 400 }
+      );
+    }
+
     let calculatedEndDate: Date | undefined;
     if (endDate) {
       calculatedEndDate = new Date(endDate);
+      if (Number.isNaN(calculatedEndDate.getTime())) {
+        return NextResponse.json(
+          { error: "Invalid end date" },
+          { status: 400 }
+        );
+      }
     } else if (installments && installments > 0) {
       const freq = paymentFrequency || undefined;
       if (freq) {
@@ -109,9 +134,9 @@ export async function PUT(
     const debt = await prisma.debt.update({
       where: { id },
       data: {
-        name: name ? String(name).trim() : undefined,
+        name: trimmedName,
         totalAmount: parsedTotal,
-        startDate: startDate ? new Date(startDate) : undefined,
+        startDate: parsedStartDate,
         endDate: calculatedEndDate,
         paymentFrequency: paymentFrequency || undefined,
         dueDay: parsedDueDay,
@@ -122,6 +147,12 @@ export async function PUT(
 
     return NextResponse.json(debt);
   } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return NextResponse.json({ error: "Debt not found" }, { status: 404 });
+    }
     console.error(error);
     return NextResponse.json(
       { error: "Failed to update debt" },
@@ -237,6 +268,12 @@ export async function DELETE(
     await prisma.debt.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return NextResponse.json({ error: "Debt not found" }, { status: 404 });
+    }
     console.error(error);
     return NextResponse.json(
       { error: "Failed to delete debt" },

@@ -12,24 +12,31 @@ export function TelegramSettings({ initialChatId }: { initialChatId: string }) {
   const [chatId, setChatId] = useState(initialChatId);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSaved(false);
+    setError("");
 
-    const res = await fetch("/api/settings/telegram", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegramChatId: chatId }),
-    });
+    try {
+      const res = await fetch("/api/settings/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegramChatId: chatId }),
+      });
 
-    setLoading(false);
-
-    if (res.ok) {
-      setSaved(true);
-    } else {
-      alert("Error al guardar");
+      if (res.ok) {
+        setSaved(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Error al guardar la configuración");
+      }
+    } catch {
+      setError("Error de conexión al guardar");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -62,6 +69,9 @@ export function TelegramSettings({ initialChatId }: { initialChatId: string }) {
         <p className="mt-2 text-sm text-green-600 dark:text-green-400">
           Guardado correctamente
         </p>
+      )}
+      {error && (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
     </form>
   );

@@ -67,25 +67,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const payment = await prisma.payment.create({
-      data: {
-        debtId,
-        amount: numericAmount,
-        paymentDate: parsedDate,
-        notes: notes ? String(notes).trim() : undefined,
-      },
-    });
+    const cleanedNotes = notes ? String(notes).trim() : undefined;
+    if (cleanedNotes && cleanedNotes.length > 500) {
+      return NextResponse.json(
+        { error: "Notes must be 500 characters or fewer" },
+        { status: 400 }
+      );
+    }
 
     const previouslyPaid = debt.payments.reduce(
       (sum, p) => sum + Number(p.amount),
       0
     );
-    if (previouslyPaid + numericAmount >= Number(debt.totalAmount)) {
-      await prisma.debt.update({
-        where: { id: debtId },
-        data: { status: "PAID" },
-      });
+    const totalAmount = Number(debt.totalAmount);
+    const remainingBalance = Math.max(totalAmount - previouslyPaid, 0);
+
+    if (debt.status === "PAID" || remainingBalance <= 0.005) {
+      return NextResponse.json(
+        { error: "Esta deuda ya está pagada" },
+        { status: 400 }
+      );
     }
+
+    const payment = await prisma.$transaction(async (tx) => {
+      const created = await tx.payment.create({
+        data: {
+          debtId,
+          amount: numericAmount,
+          paymentDate: parsedDate,
+          notes: cleanedNotes,
+        },
+      });
+
+      if (previouslyPaid + numericAmount >= totalAmount - 0.005) {
+        await tx.debt.update({
+          where: { id: debtId },
+          data: { status: "PAID" },
+        });
+      }
+
+      return created;
+    });
 
     return NextResponse.json(payment, { status: 201 });
   } catch (error) {
