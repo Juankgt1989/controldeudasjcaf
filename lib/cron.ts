@@ -1,6 +1,11 @@
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
-import { sendTelegramMessage, sendTelegramMessageWithConfirm, startTelegramPolling } from "@/lib/telegram";
+import {
+  sendTelegramMessage,
+  sendTelegramMessageWithButtons,
+  sendTelegramMessageWithConfirm,
+  startTelegramPolling,
+} from "@/lib/telegram";
 import {
   getDueDates,
   formatCurrency,
@@ -12,26 +17,41 @@ import { PaymentFrequency } from "@prisma/client";
 
 const globalForCron = global as unknown as { cronStarted?: boolean };
 
-const HOURS_BETWEEN_OVERDUE = 5;
+const GUATEMALA_TZ = "America/Guatemala";
+// Lunes 09:00 hora Guatemala
+const WEEKLY_SUMMARY_CRON = "0 9 * * 1";
+// Recordatorio de cierre para cuotas que vencen hoy (18:00 hora Guatemala)
+const DUE_TODAY_FOLLOWUP_HOUR = 18;
+// Frecuencia en días para cuotas vencidas ya confirmadas
+const CONFIRMED_OVERDUE_INTERVAL_DAYS = 3;
 
 const gtDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Guatemala",
+  timeZone: GUATEMALA_TZ,
 });
 
 function guatemalaDateString(date: Date): string {
   return gtDateFormatter.format(date);
 }
 
+function guatemalaDayMs(date: Date): number {
+  const [year, month, day] = guatemalaDateString(date).split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
 function daysUntilDueDate(dueDate: Date, now: Date): number {
-  const [year, month, day] = guatemalaDateString(now).split("-").map(Number);
-  const todayMs = Date.UTC(year, month - 1, day);
-  const dueMs = Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate());
+  const todayMs = guatemalaDayMs(now);
+  const dueMs = Date.UTC(
+    dueDate.getUTCFullYear(),
+    dueDate.getUTCMonth(),
+    dueDate.getUTCDate()
+  );
   return Math.round((dueMs - todayMs) / (1000 * 60 * 60 * 24));
 }
 
-function hoursBetween(from: Date, to: Date): number {
-  const ms = to.getTime() - from.getTime();
-  return Math.floor(ms / (1000 * 60 * 60));
+function daysBetweenGuatemalaDates(from: Date, to: Date): number {
+  return Math.round(
+    (guatemalaDayMs(to) - guatemalaDayMs(from)) / (1000 * 60 * 60 * 24)
+  );
 }
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -41,16 +61,12 @@ function isSameDay(a: Date, b: Date): boolean {
 function getGuatemalaHour(now: Date): number {
   return Number(
     new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Guatemala",
+      timeZone: GUATEMALA_TZ,
       hourCycle: "h23",
       hour: "numeric",
     }).format(now)
   );
 }
-
-const GUATEMALA_TZ = "America/Guatemala";
-// Lunes 09:00 hora Guatemala
-const WEEKLY_SUMMARY_CRON = "0 9 * * 1";
 
 async function sendWeeklySummary() {
   console.log("Running weekly summary:", new Date().toISOString());
@@ -142,6 +158,17 @@ function startWeeklySummary() {
   console.log("Weekly summary cron started (Mondays 9 AM Guatemala)");
 }
 
+interface UpcomingDigestItem {
+  debtName: string;
+  dueDate: Date;
+  installment: number;
+  balance: number;
+  unpaidCount: number;
+  daysUntilDue: number;
+  notificationId: string;
+  field: "fiveDaySent" | "dailyLastSent";
+}
+
 export function startReminderCron() {
   if (globalForCron.cronStarted) {
     return;
@@ -157,7 +184,9 @@ export function startReminderCron() {
     const now = new Date();
     const gtHour = getGuatemalaHour(now);
     if (gtHour < 9 || gtHour > 20) {
-      console.log(`Outside notification window (9 AM - 8 PM Guatemala time), current hour: ${gtHour}`);
+      console.log(
+        `Outside notification window (9 AM - 8 PM Guatemala time), current hour: ${gtHour}`
+      );
       return;
     }
 
@@ -180,7 +209,10 @@ export function startReminderCron() {
           payments: { select: { amount: true } },
           installmentNotifications: true,
         },
+        orderBy: { name: "asc" },
       });
+
+      const upcomingDigest: UpcomingDigestItem[] = [];
 
       for (const debt of debts) {
         const paid = debt.payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -206,7 +238,9 @@ export function startReminderCron() {
 
         if (unpaidDates.length === 0) continue;
 
-        const upcomingDates = unpaidDates.filter((d) => daysUntilDueDate(d, now) >= 0);
+        const upcomingDates = unpaidDates.filter(
+          (d) => daysUntilDueDate(d, now) >= 0
+        );
 
         const overdueDates = unpaidDates
           .filter((d) => daysUntilDueDate(d, now) < 0)
@@ -228,8 +262,20 @@ export function startReminderCron() {
           const isOverdue = daysUntilDue < 0;
           const isDueToday = daysUntilDue === 0;
 
+          // Solo procesamos fechas relevantes: vencidas, hoy, mañana (1 día) o en 3 días.
+          if (
+            !isOverdue &&
+            !isDueToday &&
+            daysUntilDue !== 1 &&
+            daysUntilDue !== 3
+          ) {
+            continue;
+          }
+
           let notification = debt.installmentNotifications.find(
-            (n) => n.dueDate.toISOString().split("T")[0] === dueDate.toISOString().split("T")[0]
+            (n) =>
+              n.dueDate.toISOString().split("T")[0] ===
+              dueDate.toISOString().split("T")[0]
           );
 
           if (!notification) {
@@ -255,17 +301,31 @@ export function startReminderCron() {
           const baseMessage = [
             `*Deuda:* ${escapeTelegramMarkdown(debt.name)}`,
             `*Cuota:* ${formatDate(dueDate)}`,
+            `*Monto de cuota:* ${formatCurrency(Math.min(installment, balance))}`,
             `*Cuotas pendientes:* ${unpaidDates.length}`,
             `*Saldo pendiente:* ${formatCurrency(balance)}`,
             `*Frecuencia:* ${formatFrequency(debt.paymentFrequency)}`,
           ].join("\n");
 
+          const actionButtons = [
+            { text: "💰 Registrar pago", callbackData: `pay_${notification.id}` },
+            {
+              text: "🔕 Silenciar 7 días",
+              callbackData: `snooze_${notification.id}`,
+            },
+          ];
+
           if (isOverdue) {
-            const hoursSinceLast = notification.lastOverdueSent
-              ? hoursBetween(notification.lastOverdueSent, now)
+            // Sin confirmar: 1 aviso por día (9 AM).
+            // Ya confirmada: 1 aviso cada 3 días para no generar ruido.
+            const requiredDays = notification.confirmed
+              ? CONFIRMED_OVERDUE_INTERVAL_DAYS
+              : 1;
+            const daysSinceLast = notification.lastOverdueSent
+              ? daysBetweenGuatemalaDates(notification.lastOverdueSent, now)
               : Infinity;
 
-            if (hoursSinceLast >= HOURS_BETWEEN_OVERDUE) {
+            if (daysSinceLast >= requiredDays) {
               const overdueDays = Math.abs(daysUntilDue);
               const message = [
                 "🚨 *Pago vencido*",
@@ -274,90 +334,166 @@ export function startReminderCron() {
                 `*Días de retraso:* ${overdueDays}`,
               ].join("\n");
 
-              if (notification.confirmed) {
-                await sendTelegramMessage(chatId, message);
-              } else {
-                await sendTelegramMessageWithConfirm(
-                  chatId,
-                  `${message}\n\n_Confirma que leíste este mensaje_`,
-                  notification.id,
-                  [{ text: "💰 Registrar pago", callbackData: `pay_${notification.id}` }]
-                );
-              }
-              await prisma.installmentNotification.update({
-                where: { id: notification.id },
-                data: { lastOverdueSent: now },
-              });
-            }
-          } else if (isDueToday) {
-            if (!notification.dueDateSent) {
-              const message = [
-                "📅 *Vence hoy*",
-                "",
-                baseMessage,
-                "",
-                "_Confirma que leíste este mensaje_",
-              ].join("\n");
+              const sent = notification.confirmed
+                ? await sendTelegramMessageWithButtons(
+                    chatId,
+                    message,
+                    notification.id,
+                    actionButtons
+                  )
+                : await sendTelegramMessageWithConfirm(
+                    chatId,
+                    `${message}\n\n_Confirma que leíste este mensaje o registra el pago_`,
+                    notification.id,
+                    actionButtons
+                  );
 
-              await sendTelegramMessageWithConfirm(chatId, message, notification.id);
-              await prisma.installmentNotification.update({
-                where: { id: notification.id },
-                data: { dueDateSent: true },
-              });
-            } else {
-              const hoursSinceLast = notification.lastOverdueSent
-                ? hoursBetween(notification.lastOverdueSent, now)
-                : Infinity;
-
-              if (hoursSinceLast >= HOURS_BETWEEN_OVERDUE) {
-                const message = [
-                  "⏰ *Recordatorio - Vence hoy*",
-                  "",
-                  baseMessage,
-                  "",
-                  "_Confirma que leíste este mensaje_",
-                ].join("\n");
-
-                await sendTelegramMessageWithConfirm(chatId, message, notification.id);
+              if (sent) {
                 await prisma.installmentNotification.update({
                   where: { id: notification.id },
                   data: { lastOverdueSent: now },
                 });
               }
             }
-          } else if (daysUntilDue === 5) {
-            if (!notification.fiveDaySent) {
+          } else if (isDueToday) {
+            if (!notification.dueDateSent) {
+              // Primer aviso del día (09:00 AM)
               const message = [
-                "📋 *Recordatorio anticipado*",
+                "📅 *Vence hoy*",
                 "",
                 baseMessage,
-                `*Días restantes:* 5`,
+                "",
+                "_Confirma que leíste este mensaje o registra el pago_",
               ].join("\n");
 
-              await sendTelegramMessage(chatId, message);
-              await prisma.installmentNotification.update({
-                where: { id: notification.id },
-                data: { fiveDaySent: true },
+              const sent = await sendTelegramMessageWithConfirm(
+                chatId,
+                message,
+                notification.id,
+                actionButtons
+              );
+
+              if (sent) {
+                await prisma.installmentNotification.update({
+                  where: { id: notification.id },
+                  data: { dueDateSent: true, lastOverdueSent: now },
+                });
+              }
+            } else if (gtHour >= DUE_TODAY_FOLLOWUP_HOUR) {
+              // Un único recordatorio de cierre a las 18:00 si aún no se confirmó
+              const alreadySentEvening =
+                notification.lastOverdueSent &&
+                isSameDay(notification.lastOverdueSent, now) &&
+                getGuatemalaHour(notification.lastOverdueSent) >=
+                  DUE_TODAY_FOLLOWUP_HOUR;
+
+              if (!alreadySentEvening) {
+                const message = [
+                  "⏰ *Recordatorio — Vence hoy*",
+                  "",
+                  baseMessage,
+                  "",
+                  "_Último aviso de hoy. Confirma o registra el pago_",
+                ].join("\n");
+
+                const sent = await sendTelegramMessageWithConfirm(
+                  chatId,
+                  message,
+                  notification.id,
+                  actionButtons
+                );
+
+                if (sent) {
+                  await prisma.installmentNotification.update({
+                    where: { id: notification.id },
+                    data: { lastOverdueSent: now },
+                  });
+                }
+              }
+            }
+          } else if (daysUntilDue === 3) {
+            if (!notification.fiveDaySent) {
+              upcomingDigest.push({
+                debtName: debt.name,
+                dueDate,
+                installment: Math.min(installment, balance),
+                balance,
+                unpaidCount: unpaidDates.length,
+                daysUntilDue,
+                notificationId: notification.id,
+                field: "fiveDaySent",
               });
             }
-          } else if (daysUntilDue >= 1 && daysUntilDue <= 4) {
+          } else if (daysUntilDue === 1) {
             const alreadySentToday =
-              notification.dailyLastSent && isSameDay(notification.dailyLastSent, now);
+              notification.dailyLastSent &&
+              isSameDay(notification.dailyLastSent, now);
 
             if (!alreadySentToday) {
-              const message = [
-                "⏰ *Recordatorio de pago*",
-                "",
-                baseMessage,
-                `*Días restantes:* ${daysUntilDue}`,
-              ].join("\n");
-
-              await sendTelegramMessage(chatId, message);
-              await prisma.installmentNotification.update({
-                where: { id: notification.id },
-                data: { dailyLastSent: now },
+              upcomingDigest.push({
+                debtName: debt.name,
+                dueDate,
+                installment: Math.min(installment, balance),
+                balance,
+                unpaidCount: unpaidDates.length,
+                daysUntilDue,
+                notificationId: notification.id,
+                field: "dailyLastSent",
               });
             }
+          }
+        }
+      }
+
+      // Enviar avisos anticipados (3 días / mañana) agrupados en un solo mensaje
+      if (upcomingDigest.length > 0) {
+        let digestMessage: string;
+
+        if (upcomingDigest.length === 1) {
+          const item = upcomingDigest[0];
+          const header =
+            item.daysUntilDue === 1
+              ? "⏰ *Vence mañana*"
+              : "📋 *Próximo vencimiento (en 3 días)*";
+          digestMessage = [
+            header,
+            "",
+            `*Deuda:* ${escapeTelegramMarkdown(item.debtName)}`,
+            `*Cuota:* ${formatDate(item.dueDate)}`,
+            `*Monto de cuota:* ${formatCurrency(item.installment)}`,
+            `*Cuotas pendientes:* ${item.unpaidCount}`,
+            `*Saldo pendiente:* ${formatCurrency(item.balance)}`,
+          ].join("\n");
+        } else {
+          const bloques = upcomingDigest
+            .sort((a, b) => a.daysUntilDue - b.daysUntilDue)
+            .map((item) => {
+              const cuando =
+                item.daysUntilDue === 1 ? "vence mañana" : "en 3 días";
+              return (
+                `• *${escapeTelegramMarkdown(item.debtName)}* (${cuando})\n` +
+                `   Fecha: ${formatDate(item.dueDate)} · Cuota: ${formatCurrency(item.installment)}\n` +
+                `   Saldo: ${formatCurrency(item.balance)}`
+              );
+            });
+
+          digestMessage = [
+            "📋 *Próximos vencimientos*",
+            "",
+            bloques.join("\n\n"),
+          ].join("\n");
+        }
+
+        const sent = await sendTelegramMessage(chatId, digestMessage);
+        if (sent) {
+          for (const item of upcomingDigest) {
+            await prisma.installmentNotification.update({
+              where: { id: item.notificationId },
+              data:
+                item.field === "fiveDaySent"
+                  ? { fiveDaySent: true }
+                  : { dailyLastSent: now },
+            });
           }
         }
       }
@@ -366,5 +502,5 @@ export function startReminderCron() {
     }
   });
 
-  console.log("Reminder cron job started (hourly)");
+  console.log("Reminder cron job started (hourly smart cadence)");
 }

@@ -80,6 +80,52 @@ export function startTelegramPolling() {
         console.error("Error handling callback query:", error);
         bot.answerCallbackQuery(query.id, { text: "Error al confirmar" }).catch(() => {});
       }
+    } else if (data.startsWith("snooze_")) {
+      const notificationId = data.replace("snooze_", "");
+
+      try {
+        const notification = await prisma.installmentNotification.findUnique({
+          where: { id: notificationId },
+          include: { debt: { select: { name: true } } },
+        });
+
+        if (!notification) {
+          bot.answerCallbackQuery(query.id, { text: "Notificación no encontrada" }).catch(() => {});
+          return;
+        }
+
+        const until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await prisma.installmentNotification.update({
+          where: { id: notificationId },
+          data: {
+            remindersSuppressedUntil: until,
+            confirmed: true,
+          },
+        });
+
+        bot.answerCallbackQuery(query.id, { text: "Silenciado por 7 días 🔕" }).catch(() => {});
+
+        await bot.editMessageText(
+          `🔕 *Recordatorios silenciados por 7 días*\n\n*Deuda:* ${escapeTelegramMarkdown(notification.debt.name)}\n*Cuota:* ${formatDate(notification.dueDate)}\n*Se reactivará:* ${formatDate(until)}\n\n_Si la cuota sigue impaga después de esa fecha, los avisos volverán automáticamente._`,
+          {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            parse_mode: "Markdown",
+          }
+        ).catch(() => {});
+
+        for (const msgId of notification.sentMessageIds) {
+          if (msgId === query.message.message_id.toString()) continue;
+          bot.editMessageReplyMarkup(
+            { inline_keyboard: [] },
+            { chat_id: chatId, message_id: parseInt(msgId, 10) }
+          ).catch(() => {});
+        }
+      } catch (error) {
+        console.error("Error handling snooze callback:", error);
+        bot.answerCallbackQuery(query.id, { text: "Error al silenciar" }).catch(() => {});
+      }
     } else if (data.startsWith("payyes_")) {
       const notificationId = data.replace("payyes_", "");
 
@@ -245,35 +291,39 @@ export function startTelegramPolling() {
   console.log("Telegram polling started for callbacks");
 }
 
-export async function sendTelegramMessage(chatId: string, message: string) {
+export async function sendTelegramMessage(
+  chatId: string,
+  message: string
+): Promise<boolean> {
   if (!bot || !chatId) {
     console.log("Telegram not configured");
-    return;
+    return false;
   }
 
   try {
     await bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
+    return true;
   } catch (error) {
     console.error("Failed to send Telegram message:", error);
+    return false;
   }
 }
 
-export async function sendTelegramMessageWithConfirm(
+export async function sendTelegramMessageWithButtons(
   chatId: string,
   message: string,
   notificationId: string,
-  extraButtons: { text: string; callbackData: string }[] = []
-) {
+  buttons: { text: string; callbackData: string }[]
+): Promise<boolean> {
   if (!bot || !chatId) {
     console.log("Telegram not configured");
-    return;
+    return false;
   }
 
   try {
-    const inlineKeyboard = [
-      [{ text: "✅ Confirmar recepción", callback_data: `confirm_${notificationId}` }],
-      ...extraButtons.map((b) => [{ text: b.text, callback_data: b.callbackData }]),
-    ];
+    const inlineKeyboard = buttons.map((b) => [
+      { text: b.text, callback_data: b.callbackData },
+    ]);
 
     const result = await bot.sendMessage(chatId, message, {
       parse_mode: "Markdown",
@@ -286,7 +336,21 @@ export async function sendTelegramMessageWithConfirm(
       where: { id: notificationId },
       data: { sentMessageIds: { push: result.message_id.toString() } },
     });
+    return true;
   } catch (error) {
-    console.error("Failed to send Telegram message with confirm:", error);
+    console.error("Failed to send Telegram message with buttons:", error);
+    return false;
   }
+}
+
+export async function sendTelegramMessageWithConfirm(
+  chatId: string,
+  message: string,
+  notificationId: string,
+  extraButtons: { text: string; callbackData: string }[] = []
+): Promise<boolean> {
+  return sendTelegramMessageWithButtons(chatId, message, notificationId, [
+    { text: "✅ Confirmar recepción", callbackData: `confirm_${notificationId}` },
+    ...extraButtons,
+  ]);
 }
